@@ -1,6 +1,6 @@
 import { Newspaper, BarChart3, Building2, Bitcoin, TrendingUp, AlertTriangle, Sparkles, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { api, formatRelativeTime, getTrendColor } from '../services/api';
+import { api, getTrendColor } from '../services/api';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews } from '../services/api';
 
 // Module definitions

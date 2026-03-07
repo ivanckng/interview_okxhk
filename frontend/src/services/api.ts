@@ -140,6 +140,24 @@ class ApiClient {
   async getPulseTrends(timeframe: string = '7d'): Promise<TrendPrediction> {
     return this.fetch<TrendPrediction>(`/api/pulse/trends?timeframe=${timeframe}`);
   }
+
+  // Market Data APIs
+  async getMarketData(): Promise<{ data: any; highlight: HighlightSummary }> {
+    return this.fetch('/api/market/data');
+  }
+
+  async getEconomicCalendar(): Promise<{ events: any[] }> {
+    return this.fetch('/api/market/economic-calendar');
+  }
+
+  // Crypto Price APIs
+  async getCryptoPrices(limit: number = 20): Promise<{ coins: any[]; global: any; highlight: HighlightSummary }> {
+    return this.fetch(`/api/crypto/prices?limit=${limit}`);
+  }
+
+  async getCoinDetail(coinId: string): Promise<any> {
+    return this.fetch(`/api/crypto/coin/${coinId}`);
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

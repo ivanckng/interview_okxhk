@@ -20,6 +20,8 @@ from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
+from data_sources.market_data import get_market_data_client
+from data_sources.crypto_prices import get_crypto_price_client
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -310,6 +312,117 @@ async def chat(request: ChatRequest):
             "What are the trending cryptocurrencies?"
         ]
     )
+
+
+# ==================== Market Data API ====================
+
+@app.get("/api/market/data")
+async def get_market_data():
+    """
+    Get global macro market data
+    """
+    cache = get_market_cache()
+    cached = cache.get("market_data")
+    
+    if cached:
+        return cached
+    
+    # Fetch fresh data
+    client = get_market_data_client()
+    data = await client.get_market_summary()
+    
+    # Generate highlights
+    agent = get_deepseek_agent()
+    highlight = await agent.generate_market_highlight(data)
+    
+    result = {
+        "data": data,
+        "highlight": highlight.model_dump()
+    }
+    
+    # Cache for 10 minutes
+    cache.set("market_data", result, ttl=600)
+    
+    return result
+
+
+@app.get("/api/market/economic-calendar")
+async def get_economic_calendar():
+    """
+    Get upcoming economic events
+    """
+    # Placeholder - would integrate with FMP or similar
+    return {
+        "events": [
+            {
+                "date": "2024-03-12",
+                "time": "08:30 EST",
+                "country": "US",
+                "event": "CPI Release",
+                "impact": "high",
+                "forecast": "3.1%",
+                "previous": "3.2%"
+            },
+            {
+                "date": "2024-03-13",
+                "time": "14:00 EST",
+                "country": "US",
+                "event": "Fed Interest Rate Decision",
+                "impact": "high",
+                "forecast": "5.50%",
+                "previous": "5.50%"
+            }
+        ]
+    }
+
+
+# ==================== Crypto Price API ====================
+
+@app.get("/api/crypto/prices")
+async def get_crypto_prices(limit: int = 20):
+    """
+    Get cryptocurrency prices
+    """
+    cache = get_market_cache()
+    cache_key = f"crypto_prices_{limit}"
+    cached = cache.get(cache_key)
+    
+    if cached:
+        return cached
+    
+    # Fetch fresh data
+    client = get_crypto_price_client()
+    prices = await client.get_top_coins(limit)
+    global_data = await client.get_global_data()
+    
+    # Generate highlights
+    agent = get_deepseek_agent()
+    highlight = await agent.generate_crypto_highlight(prices[:10])
+    
+    result = {
+        "coins": prices,
+        "global": global_data,
+        "highlight": highlight.model_dump()
+    }
+    
+    # Cache for 2 minutes
+    cache.set(cache_key, result, ttl=120)
+    
+    return result
+
+
+@app.get("/api/crypto/coin/{coin_id}")
+async def get_coin_detail(coin_id: str):
+    """
+    Get detailed information about a specific cryptocurrency
+    """
+    client = get_crypto_price_client()
+    details = await client.get_coin_details(coin_id)
+    
+    if not details:
+        raise HTTPException(status_code=404, detail="Coin not found")
+    
+    return details
 
 
 # ==================== WebSocket for Real-time ====================

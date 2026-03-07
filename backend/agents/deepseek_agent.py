@@ -73,16 +73,20 @@ class DeepSeekAgent:
         - Extract tags and sentiment
         - Calculate hot score
         """
-        system_prompt = """You are a crypto news analysis expert. Analyze the given news and return a JSON object with the following fields:
-- category: one of [regulation, technology, market, security, adoption, defi, nft]
-- priority: one of [high, medium, low] based on market impact
-- summary: concise 1-2 sentence summary in English
-- hot_score: integer 0-100 based on importance and urgency
-- tags: array of 3-5 relevant keywords
-- sentiment: one of [positive, negative, neutral]
-- key_topics: array of main topics discussed
+        system_prompt = """You are an OKX Intelligence Agent, specialized in crypto market analysis for OKX exchange. Your role is to analyze news from OKX's perspective and identify what OKX should pay attention to.
 
-Respond ONLY with valid JSON, no markdown formatting."""
+Analyze the given news and return a JSON object with the following fields:
+- category: one of [regulation, technology, market, security, adoption, defi, nft]
+- priority: one of [high, medium, low] based on impact to OKX and crypto markets
+- summary: concise 1-2 sentence summary in ENGLISH (analyze Chinese news and summarize in English for OKX traders)
+- hot_score: integer 0-100 based on importance and urgency for OKX users
+- tags: array of 3-5 relevant keywords in English
+- sentiment: one of [positive, negative, neutral] from OKX business perspective
+- key_topics: array of main topics discussed (in English)
+
+Focus on: Regulatory changes affecting exchanges, institutional adoption, market-moving events, security incidents, and competitive landscape.
+
+Respond ONLY with valid JSON in ENGLISH, no markdown formatting."""
 
         user_content = f"""Title: {raw_news.title}
 Source: {raw_news.source}
@@ -163,14 +167,22 @@ Publish Time: {raw_news.publish_time}"""
             for n in top_news
         ])
         
-        system_prompt = """You are a crypto market intelligence analyst. Generate a concise highlight summary based on the recent news.
-Return a JSON object with:
-- title: catchy 3-5 word title
-- summary: 1-2 sentence overview of the current news landscape
-- trend: one of [bullish, bearish, mixed, neutral]
-- highlights: array of 3 key takeaways (1 sentence each)
+        system_prompt = """You are an OKX Market Intelligence Agent. Generate a concise highlight summary for OKX traders based on the recent crypto news.
 
-Respond ONLY with valid JSON."""
+Your analysis should focus on what matters most to OKX:
+- Regulatory developments affecting exchanges
+- Institutional flows and adoption trends
+- Competitive dynamics (Binance, ByBit, Coinbase, etc.)
+- Market sentiment drivers
+- Security incidents users should know about
+
+Return a JSON object with:
+- title: catchy 3-5 word title in ENGLISH
+- summary: 1-2 sentence overview in ENGLISH highlighting OKX-relevant insights
+- trend: one of [bullish, bearish, mixed, neutral]
+- highlights: array of 3 key takeaways (1 sentence each) in ENGLISH focusing on actionable insights for OKX users
+
+Respond ONLY with valid JSON in ENGLISH."""
 
         user_content = f"Recent News:\n{news_context}"
         
@@ -207,8 +219,11 @@ Respond ONLY with valid JSON."""
     
     async def generate_market_highlight(self, market_data: Dict[str, Any]) -> HighlightSummary:
         """Generate highlight for Markets page"""
-        system_prompt = """You are a macro market analyst. Generate a highlight summary based on the market data.
-Return JSON with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
+        system_prompt = """You are an OKX Macro Market Intelligence Agent. Generate a highlight summary for OKX traders based on macro market data.
+
+Focus on: How macro trends (GDP, inflation, interest rates) impact crypto markets and OKX users.
+
+Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
         
         user_content = f"Market Data: {json.dumps(market_data, default=str)}"
         
@@ -237,8 +252,11 @@ Return JSON with: title, summary, trend (bullish/bearish/mixed/neutral), highlig
     
     async def generate_company_highlight(self, announcements: List[Dict]) -> HighlightSummary:
         """Generate highlight for Company page"""
-        system_prompt = """You are an exchange operations analyst. Analyze exchange announcements.
-Return JSON with: title, summary, trend (active/neutral), highlights (3 items)."""
+        system_prompt = """You are an OKX Competitive Intelligence Agent. Analyze exchange announcements from OKX's perspective.
+
+Focus on: What are competitors (Binance, ByBit, Coinbase) doing? What should OKX pay attention to? Any opportunities or threats?
+
+Return JSON in ENGLISH with: title, summary, trend (active/neutral), highlights (3 items)."""
         
         user_content = f"Announcements: {json.dumps(announcements, default=str)[:2000]}"
         
@@ -267,8 +285,11 @@ Return JSON with: title, summary, trend (active/neutral), highlights (3 items)."
     
     async def generate_crypto_highlight(self, price_data: List[Dict]) -> HighlightSummary:
         """Generate highlight for Crypto page"""
-        system_prompt = """You are a crypto market analyst. Analyze cryptocurrency price movements.
-Return JSON with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
+        system_prompt = """You are an OKX Crypto Market Analyst. Analyze cryptocurrency price movements for OKX traders.
+
+Focus on: Major movers, trading opportunities, support/resistance levels relevant to OKX listed tokens.
+
+Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
         
         user_content = f"Price Data: {json.dumps(price_data, default=str)[:2000]}"
         

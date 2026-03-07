@@ -11,7 +11,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
-import { api, formatRelativeTime, getTrendColor } from '../services/api';
+import { api, formatRelativeTime } from '../services/api';
 import type { ProcessedNews, HighlightSummary } from '../services/api';
 
 const priorityConfig = {

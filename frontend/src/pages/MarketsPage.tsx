@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   regions, 
   keyIndicators,
@@ -13,9 +13,12 @@ import {
   Calendar,
   TrendingUp,
   Building2,
-  Package
+  Package,
+  Loader2
 } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
+import { api } from '../services/api';
+import type { HighlightSummary } from '../services/api';
 
 const impactConfig = {
   high: { color: 'text-okx-down', bg: 'bg-okx-down/10', border: 'border-okx-down/30' },
@@ -88,6 +91,24 @@ const IndicatorTable = ({
 
 export const MarketsPage = () => {
   const [selectedRegion, setSelectedRegion] = useState<Region>('us');
+  const [marketData, setMarketData] = useState<any>(null);
+  const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await api.getMarketData();
+        setMarketData(data.data);
+        setHighlight(data.highlight);
+      } catch (err) {
+        console.error('Failed to fetch market data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const keyInds = keyIndicators[selectedRegion];
   const otherInds = otherEconomicIndicators[selectedRegion];
@@ -95,16 +116,26 @@ export const MarketsPage = () => {
   const events = regionEvents[selectedRegion];
   const region = regions.find(r => r.id === selectedRegion)!;
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-white animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* Copilot Highlight */}
-      <CopilotHighlight
-        title="Markets Intelligence"
-        summary="US inflation cooling supports risk assets. Fed maintains hawkish stance but markets price in cuts. Asian markets show mixed signals with China PMI below 50. Dollar strength moderates."
-        trend="neutral"
-        trendLabel="Mixed"
-        keyPoints={['CPI Cooling', 'Fed Holds', 'China PMI < 50', 'Dollar Stable']}
-      />
+      {/* Copilot Highlight - AI Generated */}
+      {highlight && (
+        <CopilotHighlight
+          title={highlight.title}
+          summary={highlight.summary}
+          trend={highlight.trend === 'bullish' ? 'up' : highlight.trend === 'bearish' ? 'down' : 'neutral'}
+          trendLabel={highlight.trend === 'bullish' ? 'Bullish' : highlight.trend === 'bearish' ? 'Bearish' : 'Mixed'}
+          keyPoints={highlight.highlights}
+        />
+      )}
 
       {/* Header */}
       <div className="mb-4">

@@ -95,18 +95,18 @@ class QwenAgent:
         market_context = json.dumps(market_data, default=str) if market_data else "No market data available"
         price_context = json.dumps(price_data, default=str)[:1000] if price_data else "No price data available"
         
-        system_prompt = """你是 Crypto Pulse 智能分析助手，专门为用户提供加密货币市场的深度洞察和个性化推荐。
+        system_prompt = """You are an OKX Strategic Intelligence Agent, providing market analysis and strategic recommendations specifically for OKX exchange and its users.
 
-基于新闻、市场数据和价格信息，生成以下内容：
+Based on crypto news, market data, and price information, generate the following in ENGLISH:
 
-1. 市场脉搏概述 (market_pulse): 2-3句话总结当前市场状态
-2. 关键洞察 (key_insights): 3个要点，每个1句话
-3. 趋势预测 (trend_prediction): 7天和30天展望
-4. 风险警示 (risk_alerts): 如果有重大风险，列出1-2个
-5. 行动建议 (action_items): 3条具体的操作建议
-6. 热门板块 (hot_sectors): 列出当前最热门的3个板块/概念
+1. market_pulse: 2-3 sentences summarizing current market conditions from OKX's perspective. What should OKX traders know?
+2. key_insights: 3 key insights (1 sentence each) highlighting what's most relevant to OKX business and users
+3. trend_prediction: 7-day and 30-day outlook with focus on OKX-listed assets
+4. risk_alerts: 1-2 major risk alerts if applicable (security, regulatory, market risks)
+5. action_items: 3 specific actionable recommendations for OKX users
+6. hot_sectors: Top 3 hottest sectors/themes in the crypto market right now
 
-以 JSON 格式返回：
+Return JSON in ENGLISH:
 {
   "market_pulse": "...",
   "key_insights": ["...", "...", "..."],
@@ -116,6 +116,8 @@ class QwenAgent:
   "hot_sectors": ["...", "...", "..."],
   "overall_sentiment": "bullish|bearish|mixed|neutral"
 }
+
+Analyze Chinese news sources but ALWAYS output your analysis in ENGLISH for OKX international users.
 
 只返回 JSON，不要其他文字。"""
 
@@ -152,11 +154,11 @@ class QwenAgent:
         except Exception as e:
             print(f"⚠️ Failed to generate pulse summary: {e}")
             return {
-                "market_pulse": "AI 分析暂时不可用，请稍后重试。",
-                "key_insights": ["系统正在处理数据", "请刷新页面获取最新分析"],
-                "trend_prediction": {"7d": "分析中...", "30d": "分析中..."},
+                "market_pulse": "AI analysis temporarily unavailable. Please refresh to get the latest analysis.",
+                "key_insights": ["System is processing data", "Please refresh the page for latest analysis"],
+                "trend_prediction": {"7d": "Analyzing...", "30d": "Analyzing..."},
                 "risk_alerts": [],
-                "action_items": ["关注市场动态", "保持风险管理"],
+                "action_items": ["Monitor market movements", "Maintain risk management"],
                 "hot_sectors": ["DeFi", "Layer 2", "AI Crypto"],
                 "overall_sentiment": "neutral"
             }
@@ -175,16 +177,18 @@ class QwenAgent:
             for n in top_news
         ])
         
-        system_prompt = """你是 Crypto Pulse 推荐引擎。基于最新新闻生成3条个性化推荐。
+        system_prompt = """You are an OKX Recommendation Engine, generating personalized trading and strategic recommendations for OKX users.
 
-每条推荐包含：
-- type: 推荐类型 (news|market|alert|opportunity)
-- title: 推荐标题 (5-8字)
-- description: 详细描述 (1-2句话)
-- confidence: 置信度 (70-95)
-- action_items: 2-3个行动建议
+Generate 3 recommendations based on latest crypto news. Each recommendation should focus on what OKX users should do.
 
-以 JSON 数组格式返回。"""
+Each recommendation includes:
+- type: recommendation type (news|market|alert|opportunity)
+- title: catchy title in ENGLISH (3-5 words)
+- description: detailed description in ENGLISH (1-2 sentences) explaining why this matters to OKX users
+- confidence: confidence level (70-95)
+- action_items: 2-3 specific action items in ENGLISH
+
+Return JSON array in ENGLISH."""
 
         user_content = f"""最新新闻:
 {news_context}
@@ -228,28 +232,28 @@ class QwenAgent:
             
         except Exception as e:
             print(f"⚠️ Failed to generate recommendations: {e}")
-            # Fallback recommendations
+            # Fallback recommendations in English
             return [
                 PulseRecommendation(
                     recommendation_type="news",
-                    title="关注监管动态",
-                    description="近期监管政策变化频繁，建议密切关注各国政策走向。",
+                    title="Watch Regulatory Developments",
+                    description="Recent regulatory changes are frequent. OKX users should monitor policy trends closely as they impact exchange operations.",
                     confidence=85,
-                    action_items=["阅读最新监管新闻", "评估持仓风险"]
+                    action_items=["Read latest regulatory news", "Assess portfolio risk exposure"]
                 ),
                 PulseRecommendation(
                     recommendation_type="market",
-                    title="机构资金流入",
-                    description="大型机构持续增持加密货币，市场情绪偏向乐观。",
+                    title="Institutional Inflows",
+                    description="Major institutions continue to accumulate crypto assets, indicating positive market sentiment.",
                     confidence=78,
-                    action_items=["关注机构持仓变化", "考虑长期布局"]
+                    action_items=["Monitor institutional holdings", "Consider long-term positions"]
                 ),
                 PulseRecommendation(
                     recommendation_type="alert",
-                    title="安全提醒",
-                    description="近期出现多起安全事件，请确保资产安全。",
+                    title="Security Alert",
+                    description="Multiple security incidents reported recently. OKX users should ensure their accounts are secure.",
                     confidence=90,
-                    action_items=["检查钱包安全", "启用双重验证"]
+                    action_items=["Check wallet security", "Enable 2FA authentication"]
                 )
             ]
     
