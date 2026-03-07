@@ -22,6 +22,7 @@ from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
 from data_sources.market_data import get_market_data_client
 from data_sources.crypto_prices import get_crypto_price_client
+from data_sources.comprehensive_market import get_comprehensive_market_client
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -319,17 +320,18 @@ async def chat(request: ChatRequest):
 @app.get("/api/market/data")
 async def get_market_data():
     """
-    Get global macro market data
+    Get comprehensive global macro market data
+    Sources: World Bank (200+ countries), FRED (US), OECD, Trading Economics
     """
     cache = get_market_cache()
-    cached = cache.get("market_data")
+    cached = cache.get("comprehensive_market_data")
     
     if cached:
         return cached
     
-    # Fetch fresh data
-    client = get_market_data_client()
-    data = await client.get_market_summary()
+    # Fetch comprehensive global data
+    client = get_comprehensive_market_client()
+    data = await client.get_global_summary()
     
     # Generate highlights
     agent = get_deepseek_agent()
@@ -337,13 +339,50 @@ async def get_market_data():
     
     result = {
         "data": data,
-        "highlight": highlight.model_dump()
+        "highlight": highlight.model_dump(),
+        "sources": ["World Bank Open Data", "FRED", "OECD", "Trading Economics"],
+        "coverage": f"{data['coverage']['total_countries']} countries",
+        "last_updated": data['timestamp']
     }
     
-    # Cache for 10 minutes
-    cache.set("market_data", result, ttl=600)
+    # Cache for 15 minutes
+    cache.set("comprehensive_market_data", result, ttl=900)
     
     return result
+
+
+@app.get("/api/market/countries")
+async def get_market_countries():
+    """
+    Get list of supported countries for market data
+    """
+    client = get_comprehensive_market_client()
+    return {
+        "countries": list(client.COUNTRY_CONFIG.keys()),
+        "total": len(client.COUNTRY_CONFIG),
+        "sources": ["World Bank", "FRED", "OECD", "Trading Economics"]
+    }
+
+
+@app.get("/api/market/country/{country_id}")
+async def get_country_market_data(country_id: str):
+    """
+    Get detailed market data for specific country
+    """
+    cache = get_market_cache()
+    cache_key = f"country_data_{country_id}"
+    cached = cache.get(cache_key)
+    
+    if cached:
+        return cached
+    
+    client = get_comprehensive_market_client()
+    data = await client.get_country_data(country_id)
+    
+    # Cache for 30 minutes
+    cache.set(cache_key, data, ttl=1800)
+    
+    return data
 
 
 @app.get("/api/market/economic-calendar")
