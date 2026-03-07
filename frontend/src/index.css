@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: #ffffff;
+  background-color: #000000;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #000000;
+}
+
+#root {
+  width: 100%;
+}
+
+/* OKX Color Variables - Closer to real OKX */
+:root {
+  --okx-bg-primary: #000000;
+  --okx-bg-secondary: #0d0d0d;
+  --okx-bg-tertiary: #141414;
+  --okx-bg-hover: #1a1a1a;
+  --okx-border: #2a2a2a;
+  --okx-border-light: #333333;
+  --okx-accent: #00c087;
+  --okx-accent-hover: #00d896;
+  --okx-accent-light: rgba(0, 192, 135, 0.1);
+  --okx-text-primary: #ffffff;
+  --okx-text-secondary: #a1a1aa;
+  --okx-text-muted: #71717a;
+  --okx-up: #00c087;
+  --okx-down: #ff4d4f;
+  --okx-warning: #f0a93c;
+  --okx-info: #2e9fff;
+}
+
+/* Custom Scrollbar - Minimal */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Selection */
+::selection {
+  background: var(--okx-accent-light);
+  color: var(--okx-accent);
+}
+
+/* Price animations */
+@keyframes price-up {
+  0% { color: var(--okx-up); }
+  50% { color: #00ffa3; }
+  100% { color: var(--okx-up); }
+}
+
+@keyframes price-down {
+  0% { color: var(--okx-down); }
+  50% { color: #ff7875; }
+  100% { color: var(--okx-down); }
+}
+
+.price-up {
+  animation: price-up 0.5s ease;
+}
+
+.price-down {
+  animation: price-down 0.5s ease;
+}
+
+/* Number Font */
+.font-mono {
+  font-family: "SF Mono", Monaco, "Roboto Mono", monospace;
+}
