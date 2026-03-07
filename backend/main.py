@@ -160,12 +160,12 @@ async def get_trending_news(limit: int = 10):
 
 
 @app.post("/api/news/refresh")
-async def refresh_news(background_tasks: BackgroundTasks):
+async def refresh_news():
     """
     Manually trigger news refresh from BWEnews RSS
     """
-    background_tasks.add_task(_fetch_and_process_news)
-    return {"message": "News refresh started", "timestamp": datetime.utcnow()}
+    await _fetch_and_process_news()
+    return {"message": "News refresh completed", "processed": len(processed_news), "timestamp": datetime.utcnow()}
 
 
 async def _fetch_and_process_news():
@@ -189,9 +189,11 @@ async def _fetch_and_process_news():
         existing_ids = {n.id for n in processed_news}
         new_items = [p for p in processed if p.id not in existing_ids]
         
-        processed_news = new_items + processed_news
+        # Use slice assignment to modify list in-place
+        processed_news[:] = new_items + processed_news
         # Keep only last 200 items
-        processed_news = processed_news[:200]
+        if len(processed_news) > 200:
+            processed_news[:] = processed_news[:200]
         
         # Update cache
         news_cache = get_news_cache()
