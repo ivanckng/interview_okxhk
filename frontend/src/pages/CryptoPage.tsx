@@ -86,8 +86,8 @@ export const CryptoPage = () => {
     };
     fetchData();
     
-    // Refresh every 2 minutes
-    const interval = setInterval(fetchData, 120000);
+    // Refresh every 5 minutes (300000 ms)
+    const interval = setInterval(fetchData, 300000);
     return () => clearInterval(interval);
   }, []);
 

@@ -37,17 +37,20 @@ class WorldBankClient:
     
     # Indicator codes
     INDICATORS = {
-        "gdp_growth": "NY.GDP.MKTP.KD.ZG",  # GDP growth (annual %)
-        "gdp_current": "NY.GDP.MKTP.CD",     # GDP (current US$)
-        "inflation": "FP.CPI.TOTL.ZG",       # Inflation, consumer prices (annual %)
-        "unemployment": "SL.UEM.TOTL.ZS",    # Unemployment, total (% of total labor force)
-        "population": "SP.POP.TOTL",         # Population, total
-        "trade_gdp": "NE.TRD.GNFS.ZS",       # Trade (% of GDP)
+        "gdp_growth": "NY.GDP.MKTP.KD.ZG",   # GDP growth (annual %)
+        "gdp_quarterly": "NY.GDP.MKTP.KD.ZG", # GDP growth (annual %) - World Bank only has annual
+        "gdp_current": "NY.GDP.MKTP.CD",      # GDP (current US$)
+        "inflation_cpi": "FP.CPI.TOTL.ZG",    # Inflation, consumer prices (annual %)
+        "inflation_ppi": "FP.CPI.TOTL.ZG",    # PPI not available in WB, use CPI as proxy or fallback
+        "unemployment": "SL.UEM.TOTL.ZS",     # Unemployment, total (% of total labor force)
+        "population": "SP.POP.TOTL",          # Population, total
+        "trade_gdp": "NE.TRD.GNFS.ZS",        # Trade (% of GDP)
         "fdi_inflow": "BX.KLT.DINV.WD.GD.ZS", # Foreign direct investment, net inflows (% of GDP)
-        "exports": "NE.EXP.GNFS.ZS",         # Exports of goods and services (% of GDP)
-        "imports": "NE.IMP.GNFS.ZS",         # Imports of goods and services (% of GDP)
-        "gni_per_capita": "NY.GNP.PCAP.CD",  # GNI per capita, Atlas method (current US$)
-        "ppp_conversion": "PA.NUS.PPP",      # PPP conversion factor, GDP
+        "exports": "NE.EXP.GNFS.ZS",          # Exports of goods and services (% of GDP)
+        "imports": "NE.IMP.GNFS.ZS",          # Imports of goods and services (% of GDP)
+        "gni_per_capita": "NY.GNP.PCAP.CD",   # GNI per capita, Atlas method (current US$)
+        "ppp_conversion": "PA.NUS.PPP",       # PPP conversion factor, GDP
+        "interest_rate": "FR.INR.RINR",       # Real interest rate (%)
     }
     
     async def get_indicator(self, country_code: str, indicator: str, date: str = "2023") -> Optional[float]:

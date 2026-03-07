@@ -16,24 +16,52 @@ const regions = [
   { id: 'kr', name: 'South Korea', flag: '🇰🇷' },
 ];
 
+interface CacheInfo {
+  ttl: string;
+  cached?: boolean;
+  next_update?: string;
+}
+
 interface CountryData {
   country_id: string;
   country_name: string;
   timestamp: string;
   data_sources_used: string[];
+  cache_info?: {
+    economic_data?: CacheInfo;
+    stock_indices?: CacheInfo;
+  };
   indicators: {
-    gdp_growth?: number;
-    inflation_cpi?: number;
-    inflation_ppi?: number;
-    unemployment?: number;
+    // GDP data
+    gdp_annual?: number;
+    gdp_quarterly?: number;
+    gdp_current?: number;
+    // Monthly data
+    cpi_monthly?: number;
+    ppi_monthly?: number;
+    unemployment_monthly?: number;
+    // Legacy fields
     interest_rate?: number;
     fed_rate?: number;
-    gdp_current?: number;
   };
 }
 
-// Format number with decimals
-const formatNumber = (value: number | undefined, decimals: number = 2) => {
+interface StockIndex {
+  name: string;
+  symbol: string;
+  value: number;
+  change: number;
+}
+
+interface Commodity {
+  name: string;
+  price: number;
+  unit: string;
+  change: number;
+}
+
+// Format number with 1 decimal place
+const formatNumber = (value: number | undefined, decimals: number = 1) => {
   if (value === undefined || value === null) return 'N/A';
   return value.toFixed(decimals);
 };
@@ -103,6 +131,69 @@ const SectionCard = ({
   </div>
 );
 
+// Stock Index Item Component
+const StockIndexItem = ({ index }: { index: StockIndex }) => (
+  <div className="px-4 py-3 flex justify-between items-center">
+    <div>
+      <span className="text-white text-sm">{index.name}</span>
+      <span className="text-okx-text-muted text-xs ml-2">({index.symbol})</span>
+    </div>
+    <div className="text-right">
+      <div className="text-white font-mono text-sm">
+        {index.value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+      </div>
+      <div className={`text-xs font-mono ${index.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        {index.change >= 0 ? '+' : ''}{index.change.toFixed(1)}%
+      </div>
+    </div>
+  </div>
+);
+
+// Commodity Item Component
+const CommodityItem = ({ commodity }: { commodity: Commodity }) => (
+  <div className="px-4 py-3 flex justify-between items-center">
+    <div>
+      <span className="text-white text-sm">{commodity.name}</span>
+      <span className="text-okx-text-muted text-xs ml-2">{commodity.unit}</span>
+    </div>
+    <div className="text-right">
+      <div className="text-white font-mono text-sm">
+        {commodity.price.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+      </div>
+      <div className={`text-xs font-mono ${commodity.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        {commodity.change >= 0 ? '+' : ''}{commodity.change.toFixed(1)}%
+      </div>
+    </div>
+  </div>
+);
+
+// Data Source Info Component
+const DataSourceInfo = () => (
+  <div className="mb-6 p-4 bg-okx-bg-secondary border border-okx-border rounded-lg">
+    <div className="flex items-center gap-2 mb-2">
+      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+      <span className="text-white font-medium text-sm">Data Source: World Bank + Alpha Vantage</span>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-okx-text-muted">
+      <div>
+        <span className="text-okx-text-secondary">Economic Data:</span> World Bank Open Data
+        <br />
+        <span className="text-okx-text-muted">GDP, CPI, Unemployment - 200+ countries</span>
+        <br />
+        <span className="text-okx-text-secondary">Cache:</span> 24 hours | <span className="text-okx-text-secondary">Update:</span> Daily
+      </div>
+      <div>
+        <span className="text-okx-text-secondary">Financial Data:</span> Alpha Vantage Global Quote API
+        <br />
+        <span className="text-okx-text-secondary">Cache:</span> 10 minutes | <span className="text-okx-text-secondary">Update:</span> Every 10 min
+      </div>
+    </div>
+    <div className="mt-2 text-[10px] text-okx-text-muted">
+      Economic: https://data.worldbank.org/ | Financial: https://www.alphavantage.co
+    </div>
+  </div>
+);
+
 export const MarketsPage = () => {
   const [selectedRegion, setSelectedRegion] = useState<string>('us');
   const [countryData, setCountryData] = useState<CountryData | null>(null);
@@ -110,6 +201,11 @@ export const MarketsPage = () => {
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [stockIndices, setStockIndices] = useState<StockIndex[]>([]);
+  const [commodities, setCommodities] = useState<Record<string, Commodity>>({});
+  const [indicesLoading, setIndicesLoading] = useState(false);
+  const [commoditiesLoading, setCommoditiesLoading] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState<{economic?: string; financial?: string}>({});
 
   // Fetch all countries data on mount
   useEffect(() => {
@@ -123,10 +219,24 @@ export const MarketsPage = () => {
           setHighlight(globalData.highlight);
           setLastUpdated(globalData.data?.timestamp || '');
         }
+        
+        // Set cache info
+        if (globalData.data?.cache_policy) {
+          setCacheInfo({
+            economic: globalData.data.cache_policy.economic_data,
+            financial: globalData.data.cache_policy.financial_data
+          });
+        }
+
+        // Fetch commodities
+        setCommoditiesLoading(true);
+        const commoditiesData = await api.getCommodities();
+        setCommodities(commoditiesData.commodities || {});
       } catch (err) {
         console.error('Failed to fetch market data:', err);
       } finally {
         setLoading(false);
+        setCommoditiesLoading(false);
       }
     };
     fetchAllData();
@@ -137,6 +247,21 @@ export const MarketsPage = () => {
     if (countriesData[selectedRegion]) {
       setCountryData(countriesData[selectedRegion]);
     }
+    
+    // Fetch stock indices for selected country
+    const fetchIndices = async () => {
+      setIndicesLoading(true);
+      try {
+        const indicesData = await api.getCountryIndices(selectedRegion);
+        setStockIndices(indicesData.indices || []);
+      } catch (err) {
+        console.error('Failed to fetch indices:', err);
+        setStockIndices([]);
+      } finally {
+        setIndicesLoading(false);
+      }
+    };
+    fetchIndices();
   }, [selectedRegion, countriesData]);
 
   const region = regions.find(r => r.id === selectedRegion);
@@ -194,35 +319,56 @@ export const MarketsPage = () => {
       {/* 4 Key Indicators */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <KeyIndicatorCard 
-          title="GDP Growth YoY" 
-          value={formatNumber(indicators.gdp_growth)} 
+          title="GDP Annual" 
+          value={formatNumber(indicators.gdp_annual)} 
           unit="%"
           date={dataDate}
         />
         <KeyIndicatorCard 
-          title="CPI YoY" 
-          value={formatNumber(indicators.inflation_cpi)} 
+          title="GDP Quarterly" 
+          value={formatNumber(indicators.gdp_quarterly)} 
           unit="%"
           date={dataDate}
         />
         <KeyIndicatorCard 
-          title="PPI YoY" 
-          value={formatNumber(indicators.inflation_ppi)} 
+          title="CPI Monthly" 
+          value={formatNumber(indicators.cpi_monthly)} 
           unit="%"
           date={dataDate}
         />
         <KeyIndicatorCard 
           title="Unemployment Rate" 
-          value={formatNumber(indicators.unemployment)} 
+          value={formatNumber(indicators.unemployment_monthly)} 
           unit="%"
           date={dataDate}
         />
       </div>
 
-      {/* Data Source */}
+      {/* Data Source Info */}
+      <DataSourceInfo />
+      
+      {/* Country-specific Data Source */}
       {countryData?.data_sources_used && countryData.data_sources_used.length > 0 && (
-        <div className="mb-4 text-xs text-okx-text-muted">
-          Data sources: {countryData.data_sources_used.join(', ')}
+        <div className="mb-4 p-3 bg-okx-bg-secondary/50 border border-okx-border rounded-lg">
+          <div className="text-xs text-okx-text-muted">
+            <span className="text-okx-text-secondary font-medium">{region?.name} Data Source:</span>
+            <br />
+            {countryData.data_sources_used.map((source, idx) => (
+              <span key={idx} className="block mt-1">• {source}</span>
+            ))}
+          </div>
+          {countryData?.cache_info && (
+            <div className="mt-2 text-[10px] text-okx-text-muted grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-okx-text-secondary">Economic Cache:</span> {countryData.cache_info.economic_data?.ttl}
+                {countryData.cache_info.economic_data?.cached && ' (from cache)'}
+              </div>
+              <div>
+                <span className="text-okx-text-secondary">Financial Cache:</span> {countryData.cache_info.stock_indices?.ttl}
+                {countryData.cache_info.stock_indices?.cached && ' (from cache)'}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -230,6 +376,19 @@ export const MarketsPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Economic Indicators */}
         <SectionCard title="Economic Indicators" icon={Building2}>
+          <div className="px-4 py-2 border-b border-okx-border bg-okx-bg-secondary/30">
+            <span className="text-[10px] text-okx-text-muted">
+              Source: World Bank Open Data | Updates: Daily
+            </span>
+          </div>
+          <div className="px-4 py-3">
+            <div className="flex justify-between items-center">
+              <span className="text-white text-sm">PPI Monthly</span>
+              <span className="text-white font-mono">
+                {formatNumber(indicators.ppi_monthly)}%
+              </span>
+            </div>
+          </div>
           <div className="px-4 py-3">
             <div className="flex justify-between items-center">
               <span className="text-white text-sm">Interest Rate</span>
@@ -242,24 +401,54 @@ export const MarketsPage = () => {
             <div className="flex justify-between items-center">
               <span className="text-white text-sm">GDP Current</span>
               <span className="text-white font-mono">
-                {indicators.gdp_current ? `$${(indicators.gdp_current / 1e12).toFixed(2)}T` : 'N/A'}
+                {indicators.gdp_current ? `$${(indicators.gdp_current / 1e12).toFixed(1)}T` : 'N/A'}
               </span>
             </div>
           </div>
         </SectionCard>
 
-        {/* Stock Indices - Placeholder */}
+        {/* Stock Indices */}
         <SectionCard title="Stock Indices" icon={TrendingUp}>
-          <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
-            Stock indices data coming soon
+          <div className="px-4 py-2 border-b border-okx-border bg-okx-bg-secondary/30">
+            <span className="text-[10px] text-okx-text-muted">
+              Source: Alpha Vantage Global Quote API | Updates: Every 10 min
+            </span>
           </div>
+          {indicesLoading ? (
+            <div className="px-4 py-6 text-center">
+              <Loader2 className="w-5 h-5 text-white animate-spin mx-auto" />
+            </div>
+          ) : stockIndices.length > 0 ? (
+            stockIndices.map((index, idx) => (
+              <StockIndexItem key={idx} index={index} />
+            ))
+          ) : (
+            <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
+              Stock indices data coming soon
+            </div>
+          )}
         </SectionCard>
 
-        {/* Commodities - Placeholder */}
+        {/* Commodities */}
         <SectionCard title="Commodities" icon={Package}>
-          <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
-            Commodities data coming soon
+          <div className="px-4 py-2 border-b border-okx-border bg-okx-bg-secondary/30">
+            <span className="text-[10px] text-okx-text-muted">
+              Source: Alpha Vantage | Updates: Every 10 min
+            </span>
           </div>
+          {commoditiesLoading ? (
+            <div className="px-4 py-6 text-center">
+              <Loader2 className="w-5 h-5 text-white animate-spin mx-auto" />
+            </div>
+          ) : Object.keys(commodities).length > 0 ? (
+            Object.entries(commodities).slice(0, 5).map(([key, commodity]) => (
+              <CommodityItem key={key} commodity={commodity} />
+            ))
+          ) : (
+            <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
+              Commodities data coming soon
+            </div>
+          )}
         </SectionCard>
       </div>
     </div>

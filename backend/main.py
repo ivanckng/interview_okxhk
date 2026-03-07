@@ -321,7 +321,18 @@ async def chat(request: ChatRequest):
 async def get_market_data():
     """
     Get comprehensive global macro market data
-    Sources: World Bank (200+ countries), FRED (US), OECD, Trading Economics
+    
+    Data Source: Alpha Vantage (https://www.alphavantage.co)
+    
+    Economic Data:
+    - Source: Federal Reserve Economic Data (FRED), Bureau of Economic Analysis (BEA), Bureau of Labor Statistics (BLS)
+    - Cache: 24 hours
+    - Update frequency: Daily
+    
+    Financial Data (Stock Indices):
+    - Source: Alpha Vantage Global Quote API
+    - Cache: 10 minutes
+    - Update frequency: Every 10 minutes
     """
     cache = get_market_cache()
     cached = cache.get("comprehensive_market_data")
@@ -340,13 +351,26 @@ async def get_market_data():
     result = {
         "data": data,
         "highlight": highlight.model_dump(),
-        "sources": ["World Bank Open Data", "FRED", "OECD", "Trading Economics"],
+        "sources": ["Alpha Vantage - https://www.alphavantage.co"],
+        "data_details": {
+            "economic_data": {
+                "source": "Federal Reserve Economic Data (FRED), Bureau of Economic Analysis (BEA), Bureau of Labor Statistics (BLS)",
+                "cache_ttl": "24 hours",
+                "update_frequency": "Daily"
+            },
+            "financial_data": {
+                "source": "Alpha Vantage Global Quote API",
+                "cache_ttl": "10 minutes",
+                "update_frequency": "Every 10 minutes"
+            }
+        },
+        # API Key 不在前端暴露
         "coverage": f"{data['coverage']['total_countries']} countries",
         "last_updated": data['timestamp']
     }
     
-    # Cache for 15 minutes
-    cache.set("comprehensive_market_data", result, ttl=900)
+    # Cache for 10 minutes (matches financial data frequency)
+    cache.set("comprehensive_market_data", result, ttl=600)
     
     return result
 
@@ -368,6 +392,11 @@ async def get_market_countries():
 async def get_country_market_data(country_id: str):
     """
     Get detailed market data for specific country
+    
+    Data Source: Alpha Vantage (https://www.alphavantage.co)
+    
+    Economic Data Cache: 24 hours
+    Financial Data Cache: 10 minutes
     """
     cache = get_market_cache()
     cache_key = f"country_data_{country_id}"
@@ -379,8 +408,8 @@ async def get_country_market_data(country_id: str):
     client = get_comprehensive_market_client()
     data = await client.get_country_data(country_id)
     
-    # Cache for 30 minutes
-    cache.set(cache_key, data, ttl=1800)
+    # Cache for 10 minutes (matches financial data update frequency)
+    cache.set(cache_key, data, ttl=600)
     
     return data
 
@@ -413,6 +442,58 @@ async def get_economic_calendar():
             }
         ]
     }
+
+
+@app.get("/api/market/indices/{country_id}")
+async def get_country_indices(country_id: str):
+    """
+    Get stock indices for a specific country
+    
+    Data Source: Alpha Vantage Global Quote API
+    Cache: 10 minutes
+    Update frequency: Every 10 minutes
+    """
+    client = get_comprehensive_market_client()
+    data = await client.get_stock_indices(country_id)
+    return data
+
+
+@app.get("/api/market/indices")
+async def get_all_indices():
+    """
+    Get all stock indices
+    
+    Data Source: Alpha Vantage Global Quote API
+    Cache: 10 minutes
+    """
+    client = get_comprehensive_market_client()
+    # 获取所有国家的股指
+    all_indices = {}
+    for country_id in client.COUNTRY_CONFIG.keys():
+        data = await client.get_stock_indices(country_id)
+        all_indices[country_id] = data.get("indices", [])
+    
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": "Alpha Vantage - Global Quote API",
+        "data_source_url": "https://www.alphavantage.co",
+        "cache_ttl": "10 minutes",
+        "indices_by_country": all_indices
+    }
+
+
+@app.get("/api/market/commodities")
+async def get_commodities():
+    """
+    Get commodities data
+    
+    Data Source: Alpha Vantage (with fallback for free tier)
+    Cache: 10 minutes
+    Update frequency: Every 10 minutes
+    """
+    client = get_comprehensive_market_client()
+    data = await client.get_commodities()
+    return data
 
 
 # ==================== Crypto Price API ====================

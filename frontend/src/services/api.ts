@@ -158,6 +158,18 @@ class ApiClient {
     return this.fetch('/api/market/economic-calendar');
   }
 
+  async getCountryIndices(countryId: string): Promise<{ country_id: string; country_name: string; timestamp: string; indices: any[] }> {
+    return this.fetch(`/api/market/indices/${countryId}`);
+  }
+
+  async getAllIndices(): Promise<{ timestamp: string; indices_by_country: Record<string, any[]> }> {
+    return this.fetch('/api/market/indices');
+  }
+
+  async getCommodities(): Promise<{ timestamp: string; commodities: Record<string, any> }> {
+    return this.fetch('/api/market/commodities');
+  }
+
   // Crypto Price APIs
   async getCryptoPrices(limit: number = 20): Promise<{ coins: any[]; global: any; highlight: HighlightSummary }> {
     return this.fetch(`/api/crypto/prices?limit=${limit}`);
