@@ -25,24 +25,64 @@ This document outlines all data sources used by the Crypto Pulse Dashboard.
 
 ## Market Data (Macro Economics)
 
-### US Economic Indicators
-**Source**: FRED API (Federal Reserve Economic Data)
+### Comprehensive Global Coverage
+The dashboard aggregates data from multiple sources for maximum country coverage:
+
+#### 1. World Bank Open Data (Primary Source)
+- **Coverage**: 200+ countries and territories
+- **URL**: https://data.worldbank.org/
+- **Data Points**:
+  - GDP Growth (annual %)
+  - GDP (current US$)
+  - Inflation, consumer prices (annual %)
+  - Unemployment, total (% of labor force)
+  - Population, total
+  - Trade (% of GDP)
+  - FDI net inflows (% of GDP)
+  - Exports/Imports (% of GDP)
+  - GNI per capita (Atlas method)
+- **Update Frequency**: Annual (mostly), some quarterly
+- **Cost**: Free, no API key required
+- **Documentation**: https://datahelpdesk.worldbank.org/
+
+#### 2. FRED API (US Focus)
 - **Provider**: Federal Reserve Bank of St. Louis
+- **Coverage**: United States
 - **URL**: https://api.stlouisfed.org/fred
 - **Data Points**:
-  - GDP Growth Rate (Real GDP)
-  - CPI YoY (Consumer Price Index)
-  - PPI YoY (Producer Price Index)
-  - Unemployment Rate
-  - Federal Funds Rate
-- **Update Frequency**: Monthly (CPI, PPI), Quarterly (GDP), Daily (Fed Rate)
+  - GDP Growth Rate (quarterly)
+  - CPI YoY (monthly)
+  - PPI YoY (monthly)
+  - Unemployment Rate (monthly)
+  - Federal Funds Rate (daily)
+- **Update Frequency**: Real-time to monthly
 - **Cost**: Free (requires API key)
 - **Get API Key**: https://fred.stlouisfed.org/docs/api/api_key.html
 
-### Alternative Sources (Planned)
-- **Financial Modeling Prep**: Economic calendar, global indicators
-- **Trading Economics**: Multi-country macro data
-- **World Bank**: Long-term economic trends
+#### 3. OECD Data API
+- **Coverage**: 38 member countries + key partners
+- **URL**: https://data.oecd.org/
+- **Data Points**:
+  - Quarterly GDP Growth
+  - CPI Inflation
+  - Unemployment Rate
+  - Trade Balance
+  - Industrial Production
+- **Update Frequency**: Monthly to quarterly
+- **Cost**: Free
+- **Countries**: US, UK, EU, Japan, Korea, Australia, Canada, etc.
+
+#### 4. Trading Economics API
+- **Coverage**: 196 countries
+- **URL**: https://tradingeconomics.com/api
+- **Data Points**:
+  - Economic Calendar (upcoming events)
+  - Historical Indicators
+  - Consensus Forecasts
+  - Actual vs Forecast vs Previous
+- **Update Frequency**: Real-time for calendar
+- **Cost**: Free tier (250 requests/month)
+- **Get API Key**: https://tradingeconomics.com/api
 
 ---
 
@@ -178,8 +218,20 @@ All fallback data is clearly marked in the UI.
 | BWEnews | Unlimited | - | Free |
 | DeepSeek API | 500M tokens | $0.27/M tokens | Free tier |
 | Qwen API | 1M tokens | Varies | Free tier |
+| **World Bank** | **Unlimited** | - | **Free** |
+| **OECD** | **Unlimited** | - | **Free** |
 | FRED API | 120 requests/day | Unlimited | Free tier |
+| Trading Economics | 250 requests/month | $29+/month | Free tier |
 | CoinGecko | 10-30 calls/min | $129+/month | Free tier |
+
+### Coverage Summary
+
+| Region | Countries | Primary Source | Status |
+|--------|-----------|----------------|--------|
+| Americas | US, CA, BR, MX | FRED + World Bank | ✅ Live |
+| Europe | EU, UK, DE, FR | World Bank + OECD | ✅ Live |
+| Asia Pacific | CN, HK, JP, KR, SG, AU, IN | World Bank | ✅ Live |
+| **Total** | **15 countries** | **Multi-source** | **✅ Live** |
 
 ---
 
