@@ -10,7 +10,7 @@ import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from .fred_data import get_fred_client
+from .market_data import get_market_data_client
 from .world_bank import get_world_bank_client
 from .trading_economics import get_trading_economics_client
 
@@ -100,7 +100,7 @@ class ComprehensiveMarketDataClient:
     }
     
     def __init__(self):
-        self.fred = get_fred_client()
+        self.fred = get_market_data_client()
         self.world_bank = get_world_bank_client()
         self.trading_economics = get_trading_economics_client()
     
