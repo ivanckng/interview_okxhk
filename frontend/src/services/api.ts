@@ -142,8 +142,16 @@ class ApiClient {
   }
 
   // Market Data APIs
-  async getMarketData(): Promise<{ data: any; highlight: HighlightSummary }> {
+  async getMarketData(): Promise<{ data: any; highlight: HighlightSummary; sources: string[]; coverage: string }> {
     return this.fetch('/api/market/data');
+  }
+
+  async getMarketCountries(): Promise<{ countries: string[]; total: number; sources: string[] }> {
+    return this.fetch('/api/market/countries');
+  }
+
+  async getCountryMarketData(countryId: string): Promise<any> {
+    return this.fetch(`/api/market/country/${countryId}`);
   }
 
   async getEconomicCalendar(): Promise<{ events: any[] }> {
