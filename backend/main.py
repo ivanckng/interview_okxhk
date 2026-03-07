@@ -18,6 +18,7 @@ from models.schemas import (
 )
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from agents.deepseek_agent import get_deepseek_agent
+from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
 
 # Load environment variables from backend directory
@@ -33,6 +34,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
     print("🚀 Starting Crypto Pulse Backend...")
+    
+    # Reload env vars to ensure they're loaded
+    load_dotenv(env_path, override=True)
     
     # Check API keys
     deepseek_key = os.getenv("DEEPSEEK_API_KEY")
@@ -336,6 +340,70 @@ async def websocket_news(websocket):
 
 
 # ==================== Startup Tasks ====================
+
+# ==================== Pulse API (Qwen Agent) ====================
+
+@app.get("/api/pulse/summary")
+async def get_pulse_summary():
+    """
+    Get Pulse page comprehensive summary from Qwen Agent
+    """
+    global processed_news
+    
+    cache = get_highlight_cache()
+    cached = cache.get("pulse_summary")
+    
+    if cached:
+        return cached
+    
+    # Generate new summary using Qwen
+    agent = get_qwen_agent()
+    summary = await agent.generate_pulse_summary(processed_news)
+    
+    # Cache for 20 minutes
+    cache.set("pulse_summary", summary, ttl=1200)
+    
+    return summary
+
+
+@app.get("/api/pulse/recommendations")
+async def get_pulse_recommendations():
+    """
+    Get personalized recommendations for Pulse page
+    """
+    global processed_news
+    
+    cache = get_highlight_cache()
+    cached = cache.get("pulse_recommendations")
+    
+    if cached:
+        return {"recommendations": cached}
+    
+    # Generate recommendations using Qwen
+    agent = get_qwen_agent()
+    recommendations = await agent.generate_recommendations(processed_news)
+    
+    # Convert to dict for JSON serialization
+    result = [r.model_dump() for r in recommendations]
+    
+    # Cache for 30 minutes
+    cache.set("pulse_recommendations", result, ttl=1800)
+    
+    return {"recommendations": result}
+
+
+@app.get("/api/pulse/trends")
+async def get_pulse_trends(timeframe: str = "7d"):
+    """
+    Get trend predictions from Qwen Agent
+    """
+    global processed_news
+    
+    agent = get_qwen_agent()
+    trends = await agent.predict_trends(processed_news, timeframe)
+    
+    return trends
+
 
 async def scheduled_news_refresh():
     """Background task to refresh news every 30 minutes"""
