@@ -21,12 +21,12 @@ export const Header = () => {
         <div className="flex items-center justify-between">
           {/* Logo & Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-crypto-blue to-crypto-purple flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
               <Bitcoin className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Crypto Intelligence</h1>
-              <p className="text-gray-400 text-xs">Real-time Market Dashboard</p>
+              <h1 className="text-xl font-bold text-white">Crypto <span className="text-gray-400">Pulse</span></h1>
+              <p className="text-gray-400 text-xs">Real-time Market Intelligence</p>
             </div>
           </div>
 
