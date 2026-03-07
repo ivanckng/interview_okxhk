@@ -142,7 +142,7 @@ class ApiClient {
   }
 
   // Market Data APIs
-  async getMarketData(): Promise<{ data: any; highlight: HighlightSummary; sources: string[]; coverage: string }> {
+  async getMarketData(): Promise<{ data: any; highlight: HighlightSummary; sources: string[]; coverage: string; last_updated?: string }> {
     return this.fetch('/api/market/data');
   }
 
