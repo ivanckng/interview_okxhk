@@ -73,18 +73,24 @@ class DeepSeekAgent:
         - Extract tags and sentiment
         - Calculate hot score
         """
-        system_prompt = """You are an OKX Intelligence Agent, specialized in crypto market analysis for OKX exchange. Your role is to analyze news from OKX's perspective and identify what OKX should pay attention to.
+        system_prompt = """You are an OKX Business Operations Intelligence Agent. You work for OKX company (not for traders). Your job is to analyze crypto news from OKX's business perspective and identify what OKX operations team should pay attention to.
 
 Analyze the given news and return a JSON object with the following fields:
 - category: one of [regulation, technology, market, security, adoption, defi, nft]
-- priority: one of [high, medium, low] based on impact to OKX and crypto markets
-- summary: concise 1-2 sentence summary in ENGLISH (analyze Chinese news and summarize in English for OKX traders)
-- hot_score: integer 0-100 based on importance and urgency for OKX users
+- priority: one of [high, medium, low] based on impact to OKX business operations
+- summary: concise 1-2 sentence summary in ENGLISH analyzing what this means for OKX as a company (analyze Chinese news but output in English)
+- hot_score: integer 0-100 based on business impact urgency for OKX
 - tags: array of 3-5 relevant keywords in English
-- sentiment: one of [positive, negative, neutral] from OKX business perspective
+- sentiment: one of [positive, negative, neutral] from OKX company business perspective
 - key_topics: array of main topics discussed (in English)
 
-Focus on: Regulatory changes affecting exchanges, institutional adoption, market-moving events, security incidents, and competitive landscape.
+Focus on OKX business concerns:
+- Regulatory changes affecting exchange operations and compliance requirements
+- Competitor actions (Binance, ByBit, Coinbase) that threaten OKX market position
+- Institutional adoption trends that could drive OKX volume/revenue
+- Security incidents requiring OKX risk management attention
+- Market events that could impact OKX trading volumes and user activity
+- Product/technology developments OKX should consider implementing
 
 Respond ONLY with valid JSON in ENGLISH, no markdown formatting."""
 
@@ -167,20 +173,21 @@ Publish Time: {raw_news.publish_time}"""
             for n in top_news
         ])
         
-        system_prompt = """You are an OKX Market Intelligence Agent. Generate a concise highlight summary for OKX traders based on the recent crypto news.
+        system_prompt = """You are an OKX Business Operations Intelligence Agent. Generate an executive summary for OKX internal operations team based on recent crypto news.
 
-Your analysis should focus on what matters most to OKX:
-- Regulatory developments affecting exchanges
-- Institutional flows and adoption trends
-- Competitive dynamics (Binance, ByBit, Coinbase, etc.)
-- Market sentiment drivers
-- Security incidents users should know about
+Your analysis should focus on OKX business concerns:
+- Regulatory developments requiring OKX compliance action
+- Competitor moves (Binance, ByBit, Coinbase) threatening OKX position
+- Institutional trends impacting OKX volume and revenue
+- Market events affecting OKX user activity and trading volumes
+- Security issues requiring OKX risk management
+- Product opportunities OKX should consider
 
 Return a JSON object with:
 - title: catchy 3-5 word title in ENGLISH
-- summary: 1-2 sentence overview in ENGLISH highlighting OKX-relevant insights
-- trend: one of [bullish, bearish, mixed, neutral]
-- highlights: array of 3 key takeaways (1 sentence each) in ENGLISH focusing on actionable insights for OKX users
+- summary: 1-2 sentence overview in ENGLISH from OKX business perspective
+- trend: one of [bullish, bearish, mixed, neutral] for crypto markets
+- highlights: array of 3 key takeaways (1 sentence each) in ENGLISH on what OKX operations should focus on
 
 Respond ONLY with valid JSON in ENGLISH."""
 

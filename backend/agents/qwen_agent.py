@@ -95,16 +95,16 @@ class QwenAgent:
         market_context = json.dumps(market_data, default=str) if market_data else "No market data available"
         price_context = json.dumps(price_data, default=str)[:1000] if price_data else "No price data available"
         
-        system_prompt = """You are an OKX Strategic Intelligence Agent, providing market analysis and strategic recommendations specifically for OKX exchange and its users.
+        system_prompt = """You are an OKX Business Operations Strategic Intelligence Agent. You work for OKX company operations team (not for traders). Provide strategic market analysis and business recommendations for OKX internal decision-making.
 
 Based on crypto news, market data, and price information, generate the following in ENGLISH:
 
-1. market_pulse: 2-3 sentences summarizing current market conditions from OKX's perspective. What should OKX traders know?
-2. key_insights: 3 key insights (1 sentence each) highlighting what's most relevant to OKX business and users
-3. trend_prediction: 7-day and 30-day outlook with focus on OKX-listed assets
-4. risk_alerts: 1-2 major risk alerts if applicable (security, regulatory, market risks)
-5. action_items: 3 specific actionable recommendations for OKX users
-6. hot_sectors: Top 3 hottest sectors/themes in the crypto market right now
+1. market_pulse: 2-3 sentences summarizing current market conditions from OKX business perspective. What should OKX operations team know about market conditions affecting business?
+2. key_insights: 3 key insights (1 sentence each) on what matters most to OKX company operations, competitive position, and business strategy
+3. trend_prediction: 7-day and 30-day business outlook focusing on factors impacting OKX volume, revenue, and user growth
+4. risk_alerts: 1-2 major business risk alerts if applicable (regulatory, competitive, security risks affecting OKX operations)
+5. action_items: 3 specific strategic recommendations for OKX operations team (product, marketing, compliance, or business development actions)
+6. hot_sectors: Top 3 hottest sectors/themes OKX should consider for new listings or marketing focus
 
 Return JSON in ENGLISH:
 {
@@ -117,20 +117,18 @@ Return JSON in ENGLISH:
   "overall_sentiment": "bullish|bearish|mixed|neutral"
 }
 
-Analyze Chinese news sources but ALWAYS output your analysis in ENGLISH for OKX international users.
+Analyze Chinese news sources but ALWAYS output your strategic analysis in ENGLISH for OKX internal operations team. Focus on OKX business impact, not trading advice."""
 
-只返回 JSON，不要其他文字。"""
-
-        user_content = f"""近期新闻:
+        user_content = f"""Recent News:
 {news_context}
 
-市场数据:
+Market Data:
 {market_context}
 
-价格数据片段:
+Price Data:
 {price_context}
 
-请生成 Pulse 页面分析报告。"""
+Generate Pulse page strategic analysis for OKX operations team."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -177,23 +175,23 @@ Analyze Chinese news sources but ALWAYS output your analysis in ENGLISH for OKX 
             for n in top_news
         ])
         
-        system_prompt = """You are an OKX Recommendation Engine, generating personalized trading and strategic recommendations for OKX users.
+        system_prompt = """You are an OKX Business Operations Recommendation Engine. Generate strategic business recommendations for OKX internal operations team (not trading advice).
 
-Generate 3 recommendations based on latest crypto news. Each recommendation should focus on what OKX users should do.
+Generate 3 strategic recommendations based on latest crypto news. Each recommendation should focus on what OKX company should do from business perspective.
 
 Each recommendation includes:
-- type: recommendation type (news|market|alert|opportunity)
+- type: recommendation type (compliance|product|marketing|listing|alert|opportunity)
 - title: catchy title in ENGLISH (3-5 words)
-- description: detailed description in ENGLISH (1-2 sentences) explaining why this matters to OKX users
+- description: detailed description in ENGLISH (1-2 sentences) explaining business impact and why OKX should act
 - confidence: confidence level (70-95)
-- action_items: 2-3 specific action items in ENGLISH
+- action_items: 2-3 specific strategic action items for OKX operations team in ENGLISH
 
 Return JSON array in ENGLISH."""
 
-        user_content = f"""最新新闻:
+        user_content = f"""Latest News:
 {news_context}
 
-请生成3条推荐。"""
+Generate 3 strategic recommendations for OKX business operations team."""
 
         messages = [
             {"role": "system", "content": system_prompt},

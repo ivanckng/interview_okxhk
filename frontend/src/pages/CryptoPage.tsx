@@ -170,7 +170,7 @@ export const CryptoPage = () => {
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
             <p className="text-okx-text-muted text-xs mb-1">Total Market Cap</p>
             <p className="text-xl font-bold text-white font-mono">
-              ${(globalData.total_market_cap / 1e12).toFixed(2)}T
+              ${(globalData.total_market_cap as number / 1e12).toFixed(2)}T
             </p>
           </div>
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
