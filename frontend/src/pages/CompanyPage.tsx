@@ -1,16 +1,17 @@
 import { useState, useMemo } from 'react';
 import type { Exchange, AnnouncementType } from '../types/company';
 import { CopilotHighlight } from '../components/CopilotHighlight';
-import { 
-  exchanges, 
-  getSortedAnnouncements, 
+import { useLanguage } from '../contexts/LanguageContext';
+import {
+  exchanges,
+  getSortedAnnouncements,
   getAnnouncementsByExchange,
   getAnnouncementTypeLabel,
   getAnnouncementTypeColor,
-  formatRelativeTime 
+  formatRelativeTime
 } from '../data/companyData';
-import { 
-  ExternalLink, 
+import {
+  ExternalLink,
 } from 'lucide-react';
 
 const importanceConfig = {
@@ -21,13 +22,42 @@ const importanceConfig = {
 
 const announcementTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change'];
 
+// 固定的中英文翻译
+const staticTranslations = {
+  en: {
+    exchangeFilter: 'Exchange:',
+    allExchanges: 'All',
+    typeFilter: 'Type:',
+    allTypes: 'All',
+    noAnnouncements: 'No announcements found for the selected filters.',
+    copilotTitle: 'Exchange Intelligence',
+    copilotSummary: "Binance leads with aggressive new listings and Launchpool rewards. ByBit focuses on derivatives innovation with Copy Trading 2.0. Bitget expands Launchpad offerings. Competition intensifies for retail users.",
+    copilotTrendLabel: 'Active',
+    copilotKeyPoints: ['New Listings', 'Zero-Fee Promo', 'Copy Trading 2.0', 'Launchpad Wars'],
+  },
+  zh: {
+    exchangeFilter: '交易所：',
+    allExchanges: '全部',
+    typeFilter: '类型：',
+    allTypes: '全部',
+    noAnnouncements: '暂无符合筛选条件的公告。',
+    copilotTitle: '交易所情报',
+    copilotSummary: '币安以激进的新币上线和 Launchpool 奖励领先。ByBit 专注于衍生品创新，推出 Copy Trading 2.0。Bitget 扩展 Launchpad 产品。零售用户竞争加剧。',
+    copilotTrendLabel: '活跃',
+    copilotKeyPoints: ['新币上线', '零手续费促销', '跟单交易 2.0', 'Launchpad 竞争'],
+  },
+};
+
 export const CompanyPage = () => {
+  const { language } = useLanguage();
   const [selectedExchange, setSelectedExchange] = useState<Exchange | 'all'>('all');
   const [selectedType, setSelectedType] = useState<AnnouncementType | 'all'>('all');
 
+  const t = staticTranslations[language];
+
   const filteredAnnouncements = useMemo(() => {
-    let filtered = selectedExchange === 'all' 
-      ? getSortedAnnouncements() 
+    let filtered = selectedExchange === 'all'
+      ? getSortedAnnouncements()
       : getAnnouncementsByExchange(selectedExchange);
 
     if (selectedType !== 'all') {
@@ -41,11 +71,11 @@ export const CompanyPage = () => {
     <div>
       {/* Copilot Highlight */}
       <CopilotHighlight
-        title="Exchange Intelligence"
-        summary="Binance leads with aggressive new listings and Launchpool rewards. ByBit focuses on derivatives innovation with Copy Trading 2.0. Bitget expands Launchpad offerings. Competition intensifies for retail users."
+        title={t.copilotTitle}
+        summary={t.copilotSummary}
         trend="up"
-        trendLabel="Active"
-        keyPoints={['New Listings', 'Zero-Fee Promo', 'Copy Trading 2.0', 'Launchpad Wars']}
+        trendLabel={t.copilotTrendLabel}
+        keyPoints={t.copilotKeyPoints}
       />
 
       {/* Stats */}
@@ -71,7 +101,7 @@ export const CompanyPage = () => {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4 pb-4 border-b border-okx-border">
-        <span className="text-sm text-okx-text-muted mr-2">Exchange:</span>
+        <span className="text-sm text-okx-text-muted mr-2">{t.exchangeFilter}</span>
         <button
           onClick={() => setSelectedExchange('all')}
           className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
@@ -80,7 +110,7 @@ export const CompanyPage = () => {
               : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
           }`}
         >
-          All
+          {t.allExchanges}
         </button>
         {exchanges.map((exchange) => (
           <button
@@ -100,16 +130,16 @@ export const CompanyPage = () => {
 
       {/* Type Filter */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm text-okx-text-muted mr-2">Type:</span>
+        <span className="text-sm text-okx-text-muted mr-2">{t.typeFilter}</span>
         <select
           value={selectedType}
           onChange={(e) => setSelectedType(e.target.value as AnnouncementType | 'all')}
           className="bg-okx-bg-secondary border border-okx-border rounded px-3 py-1.5 text-white text-xs focus:outline-none focus:border-okx-accent"
         >
-          <option value="all">All Types</option>
+          <option value="all">{t.allTypes}</option>
           {announcementTypes.map((type) => (
             <option key={type} value={type}>
-              {getAnnouncementTypeLabel(type)}
+              {getAnnouncementTypeLabel(type, language)}
             </option>
           ))}
         </select>
@@ -127,7 +157,7 @@ export const CompanyPage = () => {
               className="bg-okx-bg-secondary border border-okx-border rounded-lg p-4 hover:border-okx-border-light transition-all"
             >
               <div className="flex items-start gap-3">
-                <div 
+                <div
                   className="w-8 h-8 rounded flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                   style={{ backgroundColor: exchange.color }}
                 >
@@ -136,16 +166,16 @@ export const CompanyPage = () => {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-2">
-                    <span 
+                    <span
                       className="text-xs px-2 py-0.5 rounded"
-                      style={{ 
+                      style={{
                         backgroundColor: getAnnouncementTypeColor(announcement.type) + '20',
                         color: getAnnouncementTypeColor(announcement.type)
                       }}
                     >
-                      {getAnnouncementTypeLabel(announcement.type)}
+                      {getAnnouncementTypeLabel(announcement.type, language)}
                     </span>
-                    
+
                     <span className={`text-xs px-2 py-0.5 rounded ${importanceStyle.bg} ${importanceStyle.color}`}>
                       {announcement.importance.toUpperCase()}
                     </span>
@@ -156,7 +186,7 @@ export const CompanyPage = () => {
                   </div>
 
                   <h3 className="text-white text-sm font-medium mb-1">{announcement.title}</h3>
-                  
+
                   {announcement.description && (
                     <p className="text-okx-text-secondary text-xs mb-2">{announcement.description}</p>
                   )}
@@ -178,7 +208,7 @@ export const CompanyPage = () => {
 
         {filteredAnnouncements.length === 0 && (
           <div className="text-center py-12 text-okx-text-secondary">
-            No announcements found
+            {t.noAnnouncements}
           </div>
         )}
       </div>

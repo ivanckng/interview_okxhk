@@ -1,6 +1,13 @@
 import { Newspaper, BarChart3, Building2, Bitcoin, TrendingUp, AlertTriangle, Sparkles, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { api, getTrendColor } from '../services/api';
+import { useLanguage } from '../contexts/LanguageContext';
+import {
+  translatePulseSummary,
+  translatePulseRecommendations,
+  translateTrendPrediction,
+  translateProcessedNews,
+} from '../services/apiTranslation';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews } from '../services/api';
 
 // Module definitions
@@ -82,6 +89,7 @@ const ModuleTicker = ({ summaries }: { summaries: Record<string, string> }) => {
 };
 
 export const PulsePage = () => {
+  const { language } = useLanguage();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pulseSummary, setPulseSummary] = useState<PulseSummary | null>(null);
   const [recommendations, setRecommendations] = useState<PulseRecommendation[]>([]);
@@ -89,11 +97,12 @@ export const PulsePage = () => {
   const [latestNews, setLatestNews] = useState<ProcessedNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   // Fetch all pulse data
   const fetchPulseData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    
+
     try {
       const [summaryData, recData, trendsData, newsData] = await Promise.all([
         api.getPulseSummary(),
@@ -101,11 +110,27 @@ export const PulsePage = () => {
         api.getPulseTrends('7d'),
         api.getTrendingNews(5),
       ]);
-      
-      setPulseSummary(summaryData);
-      setRecommendations(recData.recommendations);
-      setTrends(trendsData);
-      setLatestNews(newsData);
+
+      // 如果是中文，翻译数据
+      if (language === 'zh') {
+        setIsTranslating(true);
+        const [translatedSummary, translatedRecs, translatedTrends, translatedNews] = await Promise.all([
+          translatePulseSummary(summaryData, 'zh'),
+          translatePulseRecommendations(recData.recommendations, 'zh'),
+          translateTrendPrediction(trendsData, 'zh'),
+          translateProcessedNews(newsData, 'zh'),
+        ]);
+        setPulseSummary(translatedSummary);
+        setRecommendations(translatedRecs);
+        setTrends(translatedTrends);
+        setLatestNews(translatedNews);
+        setIsTranslating(false);
+      } else {
+        setPulseSummary(summaryData);
+        setRecommendations(recData.recommendations);
+        setTrends(trendsData);
+        setLatestNews(newsData);
+      }
     } catch (err) {
       console.error('Failed to fetch pulse data:', err);
     } finally {
@@ -126,18 +151,25 @@ export const PulsePage = () => {
 
   useEffect(() => {
     fetchPulseData();
-    
+
     // Auto refresh every 3 minutes
     const interval = setInterval(() => fetchPulseData(false), 180000);
     return () => clearInterval(interval);
   }, []);
 
+  // 语言变化时重新翻译数据
+  useEffect(() => {
+    if (!loading) {
+      fetchPulseData(false);
+    }
+  }, [language]);
+
   // Build module summaries from latest news
   const moduleSummaries = {
-    news: latestNews[0]?.summary || 'Processing latest news...',
-    markets: trends ? `Overall trend: ${trends.overall_trend}. Confidence: ${trends.prediction_confidence}%` : 'Analyzing market data...',
-    company: 'Monitoring exchange announcements...',
-    crypto: 'Tracking price movements...',
+    news: latestNews[0]?.summary || (language === 'zh' ? '处理最新新闻...' : 'Processing latest news...'),
+    markets: trends ? (language === 'zh' ? `整体趋势：${trends.overall_trend}。置信度：${trends.prediction_confidence}%` : `Overall trend: ${trends.overall_trend}. Confidence: ${trends.prediction_confidence}%`) : (language === 'zh' ? '分析市场数据...' : 'Analyzing market data...'),
+    company: language === 'zh' ? '监控交易所公告...' : 'Monitoring exchange announcements...',
+    crypto: language === 'zh' ? '追踪价格波动...' : 'Tracking price movements...',
   };
 
   if (loading) {
@@ -149,7 +181,7 @@ export const PulsePage = () => {
   }
 
   return (
-    <div>
+    <div className={isTranslating ? 'opacity-70' : ''}>
       {/* Daily Market Pulse - AI Generated with glow */}
       <div className="bg-okx-bg-secondary rounded-lg p-5 mb-6"
         style={{ 

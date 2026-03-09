@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { NewsCategory, NewsPriority } from '../types/news';
-import { 
-  newsCategoryLabels, 
-  newsCategoryColors 
+import {
+  newsCategoryColors
 } from '../types/news';
-import { 
+import {
   ExternalLink,
   Flame,
   Loader2,
@@ -12,6 +11,8 @@ import {
 } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { api, formatRelativeTime } from '../services/api';
+import { useLanguage } from '../contexts/LanguageContext';
+import { translateProcessedNews, translateHighlightSummary } from '../services/apiTranslation';
 import type { ProcessedNews, HighlightSummary } from '../services/api';
 
 const priorityConfig = {
@@ -23,6 +24,7 @@ const priorityConfig = {
 const categories: NewsCategory[] = ['regulation', 'technology', 'market', 'security', 'adoption', 'defi', 'nft'];
 
 export const NewsPage = () => {
+  const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory | 'all'>('all');
   const [selectedPriority] = useState<NewsPriority | 'all'>('all');
   const [news, setNews] = useState<ProcessedNews[]>([]);
@@ -36,17 +38,29 @@ export const NewsPage = () => {
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
-    
+
     try {
       const [newsData, trendingData, highlightData] = await Promise.all([
         api.getNews({ limit: 50 }),
         api.getTrendingNews(3),
         api.getNewsHighlight(),
       ]);
-      
-      setNews(newsData);
-      setTrending(trendingData);
-      setHighlight(highlightData);
+
+      // 如果是中文，翻译数据
+      if (language === 'zh') {
+        const [translatedNews, translatedTrending, translatedHighlight] = await Promise.all([
+          translateProcessedNews(newsData, 'zh'),
+          translateProcessedNews(trendingData, 'zh'),
+          translateHighlightSummary(highlightData, 'zh'),
+        ]);
+        setNews(translatedNews);
+        setTrending(translatedTrending);
+        setHighlight(translatedHighlight);
+      } else {
+        setNews(newsData);
+        setTrending(trendingData);
+        setHighlight(highlightData);
+      }
     } catch (err) {
       console.error('Failed to fetch news:', err);
       setError('Failed to load news. Please try again.');
@@ -72,11 +86,29 @@ export const NewsPage = () => {
   // Initial load
   useEffect(() => {
     fetchData();
-    
+
     // Auto refresh every 5 minutes
     const interval = setInterval(() => fetchData(false), 300000);
     return () => clearInterval(interval);
   }, []);
+
+  // 语言变化时重新翻译数据
+  useEffect(() => {
+    if (!loading && language === 'zh') {
+      fetchData(false);
+    }
+  }, [language]);
+
+  // 类别标签中英文映射
+  const categoryLabelMap: Record<NewsCategory, string> = {
+    regulation: language === 'zh' ? '监管' : 'Regulation',
+    technology: language === 'zh' ? '技术' : 'Technology',
+    market: language === 'zh' ? '市场' : 'Market',
+    security: language === 'zh' ? '安全' : 'Security',
+    adoption: language === 'zh' ? '采用' : 'Adoption',
+    defi: language === 'zh' ? 'DeFi' : 'DeFi',
+    nft: language === 'zh' ? 'NFT' : 'NFT',
+  };
 
   const filteredNews = useMemo(() => {
     let filtered = [...news];
@@ -155,14 +187,14 @@ export const NewsPage = () => {
                 onClick={() => news.source_url && window.open(news.source_url, '_blank')}
               >
                 <div className="flex items-start justify-between mb-2">
-                  <span 
+                  <span
                     className="text-xs px-2 py-0.5 rounded"
-                    style={{ 
+                    style={{
                       backgroundColor: newsCategoryColors[news.category as NewsCategory] + '20',
                       color: newsCategoryColors[news.category as NewsCategory]
                     }}
                   >
-                    {newsCategoryLabels[news.category as NewsCategory]}
+                    {categoryLabelMap[news.category as NewsCategory]}
                   </span>
                   <span className="text-white text-xs font-mono">{news.hot_score}</span>
                 </div>
@@ -200,11 +232,11 @@ export const NewsPage = () => {
                 ? 'text-black'
                 : 'bg-okx-bg-secondary text-okx-text-secondary hover:text-white border border-okx-border'
             }`}
-            style={selectedCategory === category ? { 
-              backgroundColor: newsCategoryColors[category] 
+            style={selectedCategory === category ? {
+              backgroundColor: newsCategoryColors[category]
             } : {}}
           >
-            {newsCategoryLabels[category]}
+            {categoryLabelMap[category]}
           </button>
         ))}
       </div>
@@ -213,7 +245,7 @@ export const NewsPage = () => {
       <div className="space-y-3">
         {filteredNews.length === 0 ? (
           <div className="text-center py-12 text-okx-text-muted">
-            No news found for the selected filters.
+            {language === 'zh' ? '暂无符合筛选条件的新闻' : 'No news found for the selected filters.'}
           </div>
         ) : (
           filteredNews.map((news) => {
@@ -225,28 +257,28 @@ export const NewsPage = () => {
                 className="bg-okx-bg-secondary border border-okx-border rounded-lg p-4 hover:border-okx-border-light transition-all"
               >
                 <div className="flex items-start gap-4">
-                  <div 
+                  <div
                     className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: newsCategoryColors[news.category as NewsCategory] + '15' }}
                   >
-                    <span 
+                    <span
                       className="text-sm font-bold"
                       style={{ color: newsCategoryColors[news.category as NewsCategory] }}
                     >
-                      {newsCategoryLabels[news.category as NewsCategory]?.[0] || '?'}
+                      {categoryLabelMap[news.category as NewsCategory]?.[0] || '?'}
                     </span>
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <span 
+                      <span
                         className="text-xs px-2 py-0.5 rounded"
-                        style={{ 
+                        style={{
                           backgroundColor: newsCategoryColors[news.category as NewsCategory] + '20',
                           color: newsCategoryColors[news.category as NewsCategory]
                         }}
                       >
-                        {newsCategoryLabels[news.category as NewsCategory]}
+                        {categoryLabelMap[news.category as NewsCategory]}
                       </span>
                       
                       <span className={`text-xs px-2 py-0.5 rounded ${priorityStyle.bg} ${priorityStyle.color}`}>

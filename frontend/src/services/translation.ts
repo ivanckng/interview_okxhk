@@ -1,13 +1,14 @@
 import { type Language } from '../contexts/LanguageContext';
 
-const DEEPL_API_KEY = '920de657-7d74-4b67-9f1f-55e691bab855:fx';
-const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
+// 使用后端代理翻译（避免 CORS 问题）
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const TRANSLATE_ENDPOINT = `${API_BASE_URL}/api/translate`;
 
 // 翻译缓存
 const translationCache: Record<string, string> = {};
 
 /**
- * 使用 DeepL API 翻译文本
+ * 使用后端代理翻译文本（通过 DeepL API）
  */
 export async function translateText(
   text: string,
@@ -24,73 +25,279 @@ export async function translateText(
   }
 
   try {
-    const response = await fetch(DEEPL_API_URL, {
+    const response = await fetch(TRANSLATE_ENDPOINT, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: new URLSearchParams({
-        auth_key: DEEPL_API_KEY,
+      body: JSON.stringify({
         text: text,
         target_lang: targetLang.toUpperCase(),
-        source_lang: 'EN',
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`DeepL API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('[Translation] API error:', response.status, errorText);
+      throw new Error(`Translation API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const translatedText = data.translations?.[0]?.text || text;
+    const translatedText = data.translated_text || text;
 
     // 缓存结果
     translationCache[cacheKey] = translatedText;
 
     return translatedText;
   } catch (error) {
-    console.error('Translation error:', error);
+    console.error('[Translation] Error:', error);
     return text; // 出错时返回原文
   }
 }
 
 /**
- * 批量翻译文本
+ * 批量翻译文本数组
  */
-export async function translateBatch(
+export async function translateTexts(
   texts: string[],
   targetLang: Language
 ): Promise<string[]> {
-  if (targetLang === 'en') {
+  if (targetLang === 'en' || !texts.length) {
     return texts;
   }
 
-  // 去重
-  const uniqueTexts = [...new Set(texts.filter(Boolean))];
+  const results: string[] = [];
   
-  // 检查缓存
-  const uncachedTexts = uniqueTexts.filter(text => !translationCache[`${text}_${targetLang}`]);
-  
-  if (uncachedTexts.length === 0) {
-    return texts.map(text => translationCache[`${text}_${targetLang}`] || text);
+  for (const text of texts) {
+    if (!text) {
+      results.push('');
+      continue;
+    }
+    
+    const translated = await translateText(text, targetLang);
+    results.push(translated);
+    
+    // 添加小延迟避免频率限制
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  return results;
+}
+
+/**
+ * 翻译新闻文章
+ */
+export async function translateNewsArticle(
+  article: any,
+  targetLang: Language
+): Promise<any> {
+  if (targetLang === 'en' || !article) {
+    return article;
   }
 
   try {
-    // DeepL 免费版有请求频率限制，这里逐个翻译
-    const translatedMap: Record<string, string> = {};
-    
-    for (const text of uncachedTexts) {
-      const translated = await translateText(text, targetLang);
-      translatedMap[text] = translated;
-      // 添加小延迟避免频率限制
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    const [title, source] = await Promise.all([
+      translateText(article.title || '', targetLang),
+      translateText(article.source || '', targetLang),
+    ]);
 
-    return texts.map(text => translatedMap[text] || translationCache[`${text}_${targetLang}`] || text);
+    return {
+      ...article,
+      title,
+      source,
+    };
   } catch (error) {
-    console.error('Batch translation error:', error);
-    return texts;
+    console.error('[Translation] News article error:', error);
+    return article;
   }
+}
+
+/**
+ * 翻译新闻数组
+ */
+export async function translateNewsArticles(
+  articles: any[],
+  targetLang: Language
+): Promise<any[]> {
+  if (targetLang === 'en' || !articles.length) {
+    return articles;
+  }
+
+  const results = await Promise.all(
+    articles.map(article => translateNewsArticle(article, targetLang))
+  );
+
+  return results;
+}
+
+/**
+ * 翻译股指名称
+ */
+export async function translateIndexName(
+  name: string,
+  targetLang: Language
+): Promise<string> {
+  if (targetLang === 'en' || !name) {
+    return name;
+  }
+
+  // 常见股指的固定翻译
+  const indexTranslations: Record<string, string> = {
+    'S&P 500': '标普 500',
+    'Dow Jones': '道琼斯',
+    'Nasdaq': '纳斯达克',
+    'Shanghai Composite': '上证指数',
+    'Shenzhen Component': '深证成指',
+    'ChiNext': '创业板指',
+    'Hang Seng': '恒生指数',
+    'FTSE 100': '富时 100',
+    'Euro Stoxx 50': '欧洲斯托克 50',
+    'DAX': '德国 DAX',
+    'CAC 40': '法国 CAC40',
+    'Nikkei 225': '日经 225',
+    'KOSPI': '韩国综指',
+    'KOSDAQ': '韩国科斯达克',
+  };
+
+  if (indexTranslations[name]) {
+    return indexTranslations[name];
+  }
+
+  // 其他名称使用 DeepL 翻译
+  return await translateText(name, targetLang);
+}
+
+/**
+ * 翻译股指数据
+ */
+export async function translateStockIndices(
+  indices: any[],
+  targetLang: Language
+): Promise<any[]> {
+  if (targetLang === 'en' || !indices.length) {
+    return indices;
+  }
+
+  const results = await Promise.all(
+    indices.map(async (index) => {
+      const translatedName = await translateIndexName(index.name, targetLang);
+      return {
+        ...index,
+        name: translatedName,
+      };
+    })
+  );
+
+  return results;
+}
+
+/**
+ * 翻译商品名称
+ */
+export async function translateCommodityName(
+  name: string,
+  targetLang: Language
+): Promise<string> {
+  if (targetLang === 'en' || !name) {
+    return name;
+  }
+
+  // 常见商品的固定翻译
+  const commodityTranslations: Record<string, string> = {
+    'Crude Oil': '纽约期油',
+    'Gold': '金价',
+    'Silver': '银价',
+    'Natural Gas': '天然气',
+    'Copper': '铜',
+  };
+
+  if (commodityTranslations[name]) {
+    return commodityTranslations[name];
+  }
+
+  return await translateText(name, targetLang);
+}
+
+/**
+ * 翻译商品数据
+ */
+export async function translateCommodities(
+  commodities: any[],
+  targetLang: Language
+): Promise<any[]> {
+  if (targetLang === 'en' || !commodities.length) {
+    return commodities;
+  }
+
+  const results = await Promise.all(
+    commodities.map(async (commodity) => {
+      const translatedName = await translateCommodityName(commodity.name, targetLang);
+      return {
+        ...commodity,
+        name: translatedName,
+      };
+    })
+  );
+
+  return results;
+}
+
+/**
+ * 翻译货币对名称
+ */
+export async function translateCurrencyPair(
+  name: string,
+  targetLang: Language
+): Promise<string> {
+  if (targetLang === 'en' || !name) {
+    return name;
+  }
+
+  // 常见货币对的固定翻译
+  const currencyTranslations: Record<string, string> = {
+    'USD/HKD': '美元/港元',
+    'HKD/CNY': '港元/人民币',
+    'GBP/HKD': '英镑/港元',
+    'EUR/HKD': '欧元/港元',
+    'JPY/HKD': '日元/港元',
+  };
+
+  if (currencyTranslations[name]) {
+    return currencyTranslations[name];
+  }
+
+  return await translateText(name, targetLang);
+}
+
+/**
+ * 翻译汇率数据
+ */
+export async function translateCurrencyRates(
+  currencies: any[],
+  targetLang: Language
+): Promise<any[]> {
+  if (targetLang === 'en' || !currencies.length) {
+    return currencies;
+  }
+
+  const results = await Promise.all(
+    currencies.map(async (currency) => {
+      const translatedName = await translateCurrencyPair(currency.name, targetLang);
+      return {
+        ...currency,
+        name: translatedName,
+      };
+    })
+  );
+
+  return results;
+}
+
+/**
+ * 获取缓存的翻译
+ */
+export function getCachedTranslation(text: string, targetLang: Language): string | undefined {
+  return translationCache[`${text}_${targetLang}`];
 }
 
 /**
@@ -100,11 +307,4 @@ export function clearTranslationCache(): void {
   Object.keys(translationCache).forEach(key => {
     delete translationCache[key];
   });
-}
-
-/**
- * 获取缓存的翻译
- */
-export function getCachedTranslation(text: string, targetLang: Language): string | undefined {
-  return translationCache[`${text}_${targetLang}`];
 }

@@ -10,12 +10,20 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from dotenv import load_dotenv
+import httpx
 
 from models.schemas import (
     ProcessedNews, HighlightSummary, ChatRequest, ChatResponse,
     TrendDirection
 )
+
+# DeepL 翻译请求模型
+class TranslateRequest(BaseModel):
+    text: str
+    target_lang: str = "ZH"  # ZH 为中文，EN 为英文
+
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
@@ -23,6 +31,13 @@ from data_sources.bwenews import get_bwenews_client
 from data_sources.market_data import get_market_data_client
 from data_sources.crypto_prices import get_crypto_price_client
 from data_sources.comprehensive_market import get_comprehensive_market_client
+from data_sources.trading_economics import get_trading_economics_client
+from data_sources.newsdata import get_newsdata_client
+from data_sources.fred import get_fred_client
+from data_sources.tushare import get_tushare_client
+from data_sources.yfinance_data import get_yahoo_finance_client
+from agents.news_agent import get_deepseek_markets_agent
+from agents.markets_agent import get_markets_aggregator
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -444,56 +459,79 @@ async def get_economic_calendar():
     }
 
 
-@app.get("/api/market/indices/{country_id}")
-async def get_country_indices(country_id: str):
-    """
-    Get stock indices for a specific country
-    
-    Data Source: Alpha Vantage Global Quote API
-    Cache: 10 minutes
-    Update frequency: Every 10 minutes
-    """
-    client = get_comprehensive_market_client()
-    data = await client.get_stock_indices(country_id)
-    return data
-
-
 @app.get("/api/market/indices")
-async def get_all_indices():
+async def get_stock_indices_api(region: str = None):
     """
-    Get all stock indices
-    
-    Data Source: Alpha Vantage Global Quote API
-    Cache: 10 minutes
+    Get real-time stock indices from Yahoo Finance
+    Updates every 1 minute
+    - region: optional filter (us, cn, hk, uk, eu, jp, kr)
     """
-    client = get_comprehensive_market_client()
-    # 获取所有国家的股指
-    all_indices = {}
-    for country_id in client.COUNTRY_CONFIG.keys():
-        data = await client.get_stock_indices(country_id)
-        all_indices[country_id] = data.get("indices", [])
+    # Import the sync function directly
+    from data_sources.yfinance_data import get_stock_indices as yf_indices
     
-    return {
-        "timestamp": datetime.utcnow().isoformat(),
-        "source": "Alpha Vantage - Global Quote API",
-        "data_source_url": "https://www.alphavantage.co",
-        "cache_ttl": "10 minutes",
-        "indices_by_country": all_indices
-    }
+    # Run sync function in thread pool
+    import asyncio
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, yf_indices, region)
+    
+    return result
 
 
 @app.get("/api/market/commodities")
-async def get_commodities():
+async def get_commodities_api():
     """
-    Get commodities data
+    Get commodities data (Crude Oil, Gold) from Yahoo Finance
+    Updates every 1 minute
+    """
+    # Import the sync function directly
+    from data_sources.yfinance_data import get_commodities as yf_commodities
     
-    Data Source: Alpha Vantage (with fallback for free tier)
-    Cache: 10 minutes
-    Update frequency: Every 10 minutes
+    # Run sync function in thread pool
+    import asyncio
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, yf_commodities)
+    
+    return result
+
+
+@app.get("/api/market/currency")
+async def get_currency_rates_api():
     """
-    client = get_comprehensive_market_client()
-    data = await client.get_commodities()
-    return data
+    Get currency exchange rates from Yahoo Finance
+    Updates every 1 minute
+    """
+    # Import the sync function directly
+    from data_sources.yfinance_data import get_currency_rates as yf_currency
+    
+    # Run sync function in thread pool
+    import asyncio
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, yf_currency)
+    
+    return result
+
+
+@app.get("/api/markets/analysis")
+async def get_markets_analysis():
+    """
+    Get AI analysis of all markets data
+    Updates every 10 minutes
+    """
+    aggregator = get_markets_aggregator()
+    analyst = get_deepseek_markets_agent()
+    
+    # Get aggregated data
+    markets_data = await aggregator.aggregate_all_data()
+    
+    # Get AI analysis
+    analysis = await analyst.analyze_markets(markets_data)
+    
+    return {
+        "markets_data": markets_data,
+        "ai_analysis": analysis.get("analysis", {}),
+        "last_updated": analysis.get("cached_at", ""),
+        "refresh_interval": "10 minutes",
+    }
 
 
 # ==================== Crypto Price API ====================
@@ -651,10 +689,149 @@ async def start_background_tasks():
     asyncio.create_task(scheduled_news_refresh())
 
 
+@app.post("/api/translate")
+async def translate_text(request: TranslateRequest):
+    """
+    Translate text using DeepL API (proxy to avoid CORS issues)
+    """
+    deepl_api_key = os.getenv("DEEPL_API_KEY", "920de657-7d74-4b67-9f1f-55e691bab855:fx")
+    
+    # 如果目标是英文，直接返回原文
+    if request.target_lang.upper() == "EN":
+        return {"translated_text": request.text}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api-free.deepl.com/v2/translate",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"DeepL-Auth-Key {deepl_api_key}"
+                },
+                json={
+                    "text": [request.text],
+                    "target_lang": request.target_lang.upper(),
+                    "source_lang": "EN"
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=f"DeepL API error: {response.text}")
+            
+            data = response.json()
+            translated_text = data.get("translations", [{}])[0].get("text", request.text)
+            
+            return {"translated_text": translated_text}
+            
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Translation service unavailable: {str(e)}")
+
+
+@app.get("/api/market/trading-economics/{country_id}")
+async def get_trading_economics_indicators(country_id: str):
+    """
+    Get 5 key economic indicators from Trading Economics:
+    - GDP Annual Growth Rate
+    - GDP Quarterly Growth Rate
+    - Inflation Rate (CPI)
+    - Producer Prices (PPI)
+    - Unemployment Rate
+    
+    Data refreshes daily at 8:00 AM HKT
+    """
+    # Run sync function in thread pool
+    import asyncio
+    loop = asyncio.get_event_loop()
+    te_client = get_trading_economics_client()
+    data = await loop.run_in_executor(None, te_client.get_country_indicators, country_id)
+    
+    if "error" in data:
+        raise HTTPException(status_code=503, detail=data["error"])
+    
+    return data
+
+
+@app.get("/api/market/trading-economics")
+async def get_all_trading_economics_indicators():
+    """
+    Get trading economics indicators for all supported countries
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    te_client = get_trading_economics_client()
+    countries = list(te_client.COUNTRIES.keys())[:8]  # Limit to first 8 countries
+    
+    data = await loop.run_in_executor(None, te_client.get_multi_country_indicators, countries)
+    
+    return {"countries": data, "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/news/breaking")
+async def get_breaking_news():
+    """
+    Get breaking news from NewsData.io
+    """
+    newsdata = get_newsdata_client()
+    result = await newsdata.get_news("breaking")
+    return result
+
+
+@app.get("/api/news/{category}")
+async def get_news_by_category(category: str):
+    """
+    Get news by category: breaking, politics, business, technology
+    """
+    newsdata = get_newsdata_client()
+    result = await newsdata.get_news(category)
+    return result
+
+
+@app.get("/api/news/all")
+async def get_all_news():
+    """
+    Get all news from all categories
+    """
+    newsdata = get_newsdata_client()
+    result = await newsdata.get_news()
+    return result
+
+
+@app.get("/api/economy/us")
+async def get_us_economy_indicators():
+    """
+    Get US economic indicators from FRED
+    - GDP Annual
+    - GDP Quarterly
+    - CPI Monthly
+    - PPI Monthly
+    - Unemployment Rate
+    
+    Updates daily at 9:00 AM HKT
+    """
+    fred = get_fred_client()
+    result = await fred.get_us_indicators()
+    return result
+
+
+@app.get("/api/economy/cn")
+async def get_cn_economy_indicators():
+    """
+    Get China economic indicators
+    - GDP Annual & Quarterly (from Tushare)
+    - CPI Monthly (mock)
+    - PPI Monthly (mock)
+    - Unemployment Rate (mock)
+    """
+    tushare = get_tushare_client()
+    result = await tushare.get_cn_indicators()
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
-    
+
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
-    
+
     uvicorn.run("main:app", host=host, port=port, reload=True)

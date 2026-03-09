@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Test</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 40px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            background: #fff;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #e0e0e0;
+        }
+        #result {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+        .log {
+            color: #888;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DeepL Translation Test</h1>
+        <p>Click the button to test translation from English to Chinese</p>
+        
+        <button onclick="testTranslation()">Translate Test Text</button>
+        <button onclick="clearCache()">Clear Cache</button>
+        
+        <div id="result">Click button to test...</div>
+        <div id="logs" class="log"></div>
+    </div>
+
+    <script>
+        const DEEPL_API_KEY = '920de657-7d74-4b67-9f1f-55e691bab855:fx';
+        const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
+        const translationCache = {};
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            logs.innerHTML += message + '<br>';
+        }
+
+        async function translateText(text) {
+            const cacheKey = `en_zh_${text}`;
+            if (translationCache[cacheKey]) {
+                log(`[CACHE HIT] ${text.substring(0, 30)}...`);
+                return translationCache[cacheKey];
+            }
+
+            log(`[TRANSLATING] ${text.substring(0, 30)}...`);
+
+            try {
+                const response = await fetch(DEEPL_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `DeepL-Auth-Key ${DEEPL_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        text: [text],
+                        target_lang: 'ZH',
+                        source_lang: 'EN',
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error: ${response.status} - ${errorText}`);
+                }
+
+                const data = await response.json();
+                const translated = data.translations?.[0]?.text || text;
+                translationCache[cacheKey] = translated;
+                
+                log(`[SUCCESS] -> ${translated.substring(0, 30)}...`);
+                return translated;
+            } catch (error) {
+                log(`[ERROR] ${error.message}`);
+                return text;
+            }
+        }
+
+        async function testTranslation() {
+            const resultDiv = document.getElementById('result');
+            const testText = "Despite the lack of recent market and price data, the crypto market remains in a state of cautious optimism.";
+            
+            resultDiv.textContent = 'Translating...';
+            log('Starting translation test...');
+            
+            const translated = await translateText(testText);
+            
+            resultDiv.textContent = `Original: ${testText}\n\nTranslated: ${translated}`;
+            log('Translation test completed.');
+        }
+
+        function clearCache() {
+            Object.keys(translationCache).forEach(key => delete translationCache[key]);
+            document.getElementById('logs').innerHTML = '';
+            log('Cache cleared.');
+        }
+    </script>
+</body>
+</html>

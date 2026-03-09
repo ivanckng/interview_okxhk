@@ -6,7 +6,6 @@ interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (text: string) => string;
-  isTranslating: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -21,7 +20,7 @@ const translationCache: Record<string, Record<string, string>> = {
 const STORAGE_KEY = 'preferred-language';
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // 从localStorage读取语言偏好，默认英文
+  // 从 localStorage 读取语言偏好，默认英文
   const [language, setLanguageState] = useState<Language>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY) as Language;
@@ -31,10 +30,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
     return 'en';
   });
-  
-  const [isTranslating, setIsTranslating] = useState(false);
 
-  // 保存到localStorage
+  // 保存到 localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, language);
@@ -48,7 +45,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   // 翻译函数
   const t = useCallback((text: string): string => {
     if (!text) return '';
-    
+
     // 如果当前是英文，直接返回原文
     if (language === 'en') {
       return text;
@@ -64,7 +61,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t, isTranslating }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   );

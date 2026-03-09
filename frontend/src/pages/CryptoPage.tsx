@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { api } from '../services/api';
+import { useLanguage } from '../contexts/LanguageContext';
+import { translateHighlightSummary } from '../services/apiTranslation';
 import type { HighlightSummary } from '../services/api';
 
 interface CryptoCoin {
@@ -64,6 +66,7 @@ const CryptoCard = ({ coin }: { coin: CryptoCoin }) => {
 };
 
 export const CryptoPage = () => {
+  const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'major' | 'emerging' | 'growing'>('all');
   const [coins, setCoins] = useState<CryptoCoin[]>([]);
@@ -77,7 +80,14 @@ export const CryptoPage = () => {
         const data = await api.getCryptoPrices(20);
         setCoins(data.coins);
         setGlobalData(data.global);
-        setHighlight(data.highlight);
+        
+        // 如果是中文，翻译 highlight
+        if (language === 'zh' && data.highlight) {
+          const translatedHighlight = await translateHighlightSummary(data.highlight, 'zh');
+          setHighlight(translatedHighlight);
+        } else {
+          setHighlight(data.highlight);
+        }
       } catch (err) {
         console.error('Failed to fetch crypto prices:', err);
       } finally {
@@ -85,11 +95,11 @@ export const CryptoPage = () => {
       }
     };
     fetchData();
-    
+
     // Refresh every 5 minutes (300000 ms)
     const interval = setInterval(fetchData, 300000);
     return () => clearInterval(interval);
-  }, []);
+  }, [language]);
 
   const filteredCryptos = useMemo(() => {
     return coins.filter(crypto => {
@@ -112,6 +122,40 @@ export const CryptoPage = () => {
       : selectedCategory === 'emerging' 
         ? emergingCryptos 
         : growingCryptos;
+
+  // 静态文本翻译
+  const staticTranslations = {
+    en: {
+      searchPlaceholder: 'Search cryptocurrencies...',
+      categories: { all: 'All', major: 'Major', emerging: 'Emerging', growing: 'Growing' },
+      marketCap: 'Market Cap',
+      volume: 'Volume',
+      dominance: 'Dominance',
+      majorTitle: 'Major',
+      majorDesc: 'Top-tier digital assets',
+      emergingTitle: 'Emerging',
+      emergingDesc: 'Rising altcoins',
+      growingTitle: 'Growing',
+      growingDesc: 'New opportunities',
+      noResults: 'No cryptocurrencies found for the selected filters.',
+    },
+    zh: {
+      searchPlaceholder: '搜索加密货币...',
+      categories: { all: '全部', major: '主流币', emerging: '新兴币', growing: '增长币' },
+      marketCap: '总市值',
+      volume: '交易量',
+      dominance: '占比',
+      majorTitle: '主流币',
+      majorDesc: '顶级数字资产',
+      emergingTitle: '新兴币',
+      emergingDesc: '崛起的山寨币',
+      growingTitle: '增长币',
+      growingDesc: '新机会',
+      noResults: '暂无符合筛选条件的加密货币。',
+    },
+  };
+
+  const t = staticTranslations[language];
 
   if (loading) {
     return (
@@ -140,7 +184,7 @@ export const CryptoPage = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-okx-text-muted" size={16} />
           <input
             type="text"
-            placeholder="Search cryptocurrencies..."
+            placeholder={t.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-okx-bg-secondary border border-okx-border rounded text-white placeholder-okx-text-muted text-sm focus:outline-none focus:border-white/50 transition-colors"
@@ -158,7 +202,7 @@ export const CryptoPage = () => {
                   : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
               }`}
             >
-              {category.charAt(0).toUpperCase() + category.slice(1)}
+              {t.categories[category]}
             </button>
           ))}
         </div>
@@ -168,25 +212,25 @@ export const CryptoPage = () => {
       {globalData && (
         <div className="grid grid-cols-4 gap-3 mb-6">
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
-            <p className="text-okx-text-muted text-xs mb-1">Total Market Cap</p>
+            <p className="text-okx-text-muted text-xs mb-1">{t.marketCap}</p>
             <p className="text-xl font-bold text-white font-mono">
               ${(globalData.total_market_cap as number / 1e12).toFixed(2)}T
             </p>
           </div>
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
-            <p className="text-okx-text-muted text-xs mb-1">24h Volume</p>
+            <p className="text-okx-text-muted text-xs mb-1">{t.volume}</p>
             <p className="text-xl font-bold text-white font-mono">
               ${(globalData.total_volume / 1e9).toFixed(1)}B
             </p>
           </div>
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
-            <p className="text-okx-text-muted text-xs mb-1">24h Change</p>
+            <p className="text-okx-text-muted text-xs mb-1">24h {t.marketCap}</p>
             <p className={`text-xl font-bold font-mono ${globalData.market_cap_change_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {globalData.market_cap_change_24h >= 0 ? '+' : ''}{globalData.market_cap_change_24h.toFixed(2)}%
             </p>
           </div>
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
-            <p className="text-okx-text-muted text-xs mb-1">Active Coins</p>
+            <p className="text-okx-text-muted text-xs mb-1">{t.dominance}</p>
             <p className="text-xl font-bold text-white font-mono">
               {globalData.active_cryptocurrencies?.toLocaleString() || 'N/A'}
             </p>
@@ -199,25 +243,25 @@ export const CryptoPage = () => {
         <>
           {majorCryptos.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-white font-medium mb-3">Major <span className="text-okx-text-muted text-sm">Top-tier digital assets</span></h2>
+              <h2 className="text-white font-medium mb-3">{t.majorTitle} <span className="text-okx-text-muted text-sm">{t.majorDesc}</span></h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {majorCryptos.map(coin => <CryptoCard key={coin.id} coin={coin} />)}
               </div>
             </div>
           )}
-          
+
           {emergingCryptos.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-white font-medium mb-3">Emerging <span className="text-okx-text-muted text-sm">Rising altcoins</span></h2>
+              <h2 className="text-white font-medium mb-3">{t.emergingTitle} <span className="text-okx-text-muted text-sm">{t.emergingDesc}</span></h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {emergingCryptos.map(coin => <CryptoCard key={coin.id} coin={coin} />)}
               </div>
             </div>
           )}
-          
+
           {growingCryptos.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-white font-medium mb-3">Growing <span className="text-okx-text-muted text-sm">New opportunities</span></h2>
+              <h2 className="text-white font-medium mb-3">{t.growingTitle} <span className="text-okx-text-muted text-sm">{t.growingDesc}</span></h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {growingCryptos.map(coin => <CryptoCard key={coin.id} coin={coin} />)}
               </div>
@@ -232,7 +276,7 @@ export const CryptoPage = () => {
 
       {displayedCryptos.length === 0 && (
         <div className="text-center py-12 text-okx-text-muted">
-          No cryptocurrencies found for the selected filters.
+          {t.noResults}
         </div>
       )}
     </div>

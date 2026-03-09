@@ -3,7 +3,6 @@ import { Bitcoin, Building2, RefreshCw, Clock, Newspaper, BarChart3, Sparkles, G
 import { useState, useEffect, useRef } from 'react';
 import { ChatBot } from './ChatBot';
 import { useLanguage, type Language } from '../contexts/LanguageContext';
-import { TranslatableText } from './TranslatableText';
 
 export const Layout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -44,17 +43,25 @@ export const Layout = () => {
     setLanguage(lang);
     localStorage.setItem('preferred-language', lang);
     setShowLangMenu(false);
-    window.location.reload();
   };
 
   const languageLabel = language === 'zh' ? '简体中文' : 'English';
 
+  // 导航栏标签（固定中英文映射）
+  const navLabels = {
+    pulse: language === 'zh' ? '市场脉搏' : 'Pulse',
+    news: language === 'zh' ? '热点新闻' : 'News',
+    markets: language === 'zh' ? '宏观市场' : 'Markets',
+    company: language === 'zh' ? '竞对动向' : 'Competitors',
+    crypto: language === 'zh' ? '加密货币' : 'Crypto',
+  };
+
   const navItems = [
-    { path: '/', labelKey: 'Pulse', icon: Sparkles },
-    { path: '/news', labelKey: 'News', icon: Newspaper },
-    { path: '/markets', labelKey: 'Markets', icon: BarChart3 },
-    { path: '/company', labelKey: 'Company', icon: Building2 },
-    { path: '/crypto', labelKey: 'Crypto', icon: Bitcoin },
+    { path: '/', label: navLabels.pulse, icon: Sparkles },
+    { path: '/news', label: navLabels.news, icon: Newspaper },
+    { path: '/markets', label: navLabels.markets, icon: BarChart3 },
+    { path: '/company', label: navLabels.company, icon: Building2 },
+    { path: '/crypto', label: navLabels.crypto, icon: Bitcoin },
   ];
 
   return (
@@ -76,9 +83,9 @@ export const Layout = () => {
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path || 
+                const isActive = location.pathname === item.path ||
                   (item.path !== '/' && location.pathname.startsWith(item.path));
-                
+
                 return (
                   <NavLink
                     key={item.path}
@@ -92,7 +99,7 @@ export const Layout = () => {
                     }
                   >
                     <Icon size={16} />
-                    <span><TranslatableText>{item.labelKey}</TranslatableText></span>
+                    <span>{item.label}</span>
                   </NavLink>
                 );
               })}
@@ -157,9 +164,9 @@ export const Layout = () => {
           <nav className="flex md:hidden items-center gap-1 pb-2 overflow-x-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path || 
+              const isActive = location.pathname === item.path ||
                 (item.path !== '/' && location.pathname.startsWith(item.path));
-              
+
               return (
                 <NavLink
                   key={item.path}
@@ -173,7 +180,7 @@ export const Layout = () => {
                   }
                 >
                   <Icon size={14} />
-                  <span><TranslatableText>{item.labelKey}</TranslatableText></span>
+                  <span>{item.label}</span>
                 </NavLink>
               );
             })}
@@ -190,7 +197,7 @@ export const Layout = () => {
       <footer className="border-t border-okx-border mt-auto bg-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className="text-okx-text-muted text-xs text-center">
-            <TranslatableText>Data is for demonstration purposes only</TranslatableText>
+            {language === 'zh' ? '数据仅供参考' : 'Data is for demonstration purposes only'}
           </p>
         </div>
       </footer>

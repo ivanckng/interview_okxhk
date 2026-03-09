@@ -6,21 +6,41 @@ export const exchanges: ExchangeConfig[] = [
   { id: 'bitget', name: 'Bitget', color: '#00a2ff', logo: 'BG' },
 ];
 
-const announcementTypeConfig: Record<AnnouncementType, { label: string; color: string }> = {
-  new_listing: { label: 'New Listing', color: '#10b981' },
-  delisting: { label: 'Delisting', color: '#ef4444' },
-  activity: { label: 'Activity', color: '#8b5cf6' },
-  product_update: { label: 'Product', color: '#3b82f6' },
-  maintenance: { label: 'Maintenance', color: '#f59e0b' },
-  rule_change: { label: 'Rule Change', color: '#6b7280' },
+// 公告类型标签（中英文）
+export const announcementTypeLabels = {
+  en: {
+    new_listing: 'New Listing',
+    delisting: 'Delisting',
+    activity: 'Activity',
+    product_update: 'Product',
+    maintenance: 'Maintenance',
+    rule_change: 'Rule Change',
+  },
+  zh: {
+    new_listing: '新币上线',
+    delisting: '下架',
+    activity: '活动',
+    product_update: '产品更新',
+    maintenance: '维护',
+    rule_change: '规则变更',
+  },
 };
 
-export const getAnnouncementTypeLabel = (type: AnnouncementType): string => {
-  return announcementTypeConfig[type].label;
+export const announcementTypeColors: Record<AnnouncementType, string> = {
+  new_listing: '#10b981',
+  delisting: '#ef4444',
+  activity: '#8b5cf6',
+  product_update: '#3b82f6',
+  maintenance: '#f59e0b',
+  rule_change: '#6b7280',
+};
+
+export const getAnnouncementTypeLabel = (type: AnnouncementType, lang: 'en' | 'zh' = 'en'): string => {
+  return announcementTypeLabels[lang][type];
 };
 
 export const getAnnouncementTypeColor = (type: AnnouncementType): string => {
-  return announcementTypeConfig[type].color;
+  return announcementTypeColors[type];
 };
 
 // Generate mock data with recent timestamps
