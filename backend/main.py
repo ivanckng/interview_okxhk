@@ -36,8 +36,9 @@ from data_sources.newsdata import get_newsdata_client
 from data_sources.fred import get_fred_client
 from data_sources.tushare import get_tushare_client
 from data_sources.yfinance_data import get_yahoo_finance_client
-from agents.news_agent import get_deepseek_markets_agent
+from agents.news_agent import get_deepseek_markets_agent, get_deepseek_crypto_agent
 from agents.markets_agent import get_markets_aggregator
+from agents.crypto_agent import get_crypto_aggregator
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -528,6 +529,29 @@ async def get_markets_analysis():
     
     return {
         "markets_data": markets_data,
+        "ai_analysis": analysis.get("analysis", {}),
+        "last_updated": analysis.get("cached_at", ""),
+        "refresh_interval": "10 minutes",
+    }
+
+
+@app.get("/api/crypto/analysis")
+async def get_crypto_analysis():
+    """
+    Get AI analysis of crypto market data
+    Updates every 10 minutes
+    """
+    aggregator = get_crypto_aggregator()
+    analyst = get_deepseek_crypto_agent()
+    
+    # Get aggregated data
+    crypto_data = await aggregator.aggregate_all_data()
+    
+    # Get AI analysis
+    analysis = await analyst.analyze_crypto(crypto_data)
+    
+    return {
+        "crypto_data": crypto_data,
         "ai_analysis": analysis.get("analysis", {}),
         "last_updated": analysis.get("cached_at", ""),
         "refresh_interval": "10 minutes",

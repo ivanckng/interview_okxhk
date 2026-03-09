@@ -74,13 +74,55 @@ export const CryptoPage = () => {
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Fetch AI analysis data (every 10 minutes)
+  useEffect(() => {
+    const fetchAIAnalysis = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/api/crypto/analysis`);
+        const data = await response.json();
+        
+        const aiAnalysis = data.ai_analysis;
+        if (aiAnalysis && !aiAnalysis.error) {
+          // Convert AI analysis to highlight format
+          const highlightData = {
+            title: 'AI Crypto Analysis',
+            summary: aiAnalysis.market_pulse || 'Analyzing crypto market...',
+            trend: aiAnalysis.overall_sentiment || 'neutral',
+            highlights: aiAnalysis.key_insights?.slice(0, 3) || [],
+            generated_at: new Date().toISOString(),
+          };
+          
+          // Translate if Chinese
+          if (language === 'zh' && highlightData.summary) {
+            const translated = await translateHighlightSummary(highlightData, 'zh');
+            setHighlight(translated);
+          } else {
+            setHighlight(highlightData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch AI analysis:', err);
+      }
+    };
+    
+    // Initial fetch
+    fetchAIAnalysis();
+    
+    // Refresh every 10 minutes (600000 ms)
+    const interval = setInterval(fetchAIAnalysis, 600000);
+    
+    return () => clearInterval(interval);
+  }, [language]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log('[Crypto] Fetching data...');
         const data = await api.getCryptoPrices(20);
+        console.log('[Crypto] Data fetched:', data.coins?.length, 'coins');
         setCoins(data.coins);
         setGlobalData(data.global);
-        
+
         // 如果是中文，翻译 highlight
         if (language === 'zh' && data.highlight) {
           const translatedHighlight = await translateHighlightSummary(data.highlight, 'zh');
