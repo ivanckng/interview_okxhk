@@ -146,6 +146,7 @@ export const CompanyPage = () => {
           bybit: bybitAnnouncements.slice(0, 10),
           binance: binanceAnnouncements.slice(0, 10),
           bitget: bitgetAnnouncements.slice(0, 10),
+          language: language === 'zh' ? 'zh' : 'en',
         };
 
         const response = await fetch('http://localhost:8000/api/competitors/analysis', {
@@ -160,10 +161,68 @@ export const CompanyPage = () => {
         }
 
         const data = await response.json();
-        const aiAnalysis = data.ai_analysis;
+        let aiAnalysis = data.ai_analysis;
 
         // Accept valid AI analysis
         if (aiAnalysis && aiAnalysis.summary && aiAnalysis.summary.length > 10 && aiAnalysis.summary !== '暂无竞对数据进行分析') {
+          // For English users, translate using DeepL if content is in Chinese
+          if (language === 'en' && !/[a-zA-Z]{3,}/.test(aiAnalysis.summary)) {
+            try {
+              // Translate summary
+              const summaryRes = await fetch('http://localhost:8000/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: aiAnalysis.summary, target_lang: 'EN' }),
+              });
+              if (summaryRes.ok) {
+                const summaryData = await summaryRes.json();
+                aiAnalysis.summary = summaryData.translated_text;
+              }
+
+              // Translate trend_label
+              if (aiAnalysis.trend_label && !/[a-zA-Z]{3,}/.test(aiAnalysis.trend_label)) {
+                const labelRes = await fetch('http://localhost:8000/api/translate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: aiAnalysis.trend_label, target_lang: 'EN' }),
+                });
+                if (labelRes.ok) {
+                  const labelData = await labelRes.json();
+                  aiAnalysis.trend_label = labelData.translated_text;
+                }
+              }
+
+              // Translate key_points
+              if (aiAnalysis.key_points && aiAnalysis.key_points.length > 0) {
+                const translatedPoints = await Promise.all(
+                  aiAnalysis.key_points
+                    .filter((point: string) => !/[a-zA-Z]{3,}/.test(point))
+                    .map(async (point: string) => {
+                      const pointRes = await fetch('http://localhost:8000/api/translate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: point, target_lang: 'EN' }),
+                      });
+                      if (pointRes.ok) {
+                        const pointData = await pointRes.json();
+                        return pointData.translated_text;
+                      }
+                      return point;
+                    })
+                );
+                // Merge translated and non-translated points
+                let pointIndex = 0;
+                aiAnalysis.key_points = aiAnalysis.key_points.map((point: string) => {
+                  if (/[a-zA-Z]{3,}/.test(point)) return point;
+                  return translatedPoints[pointIndex++] || point;
+                });
+              }
+            } catch (translateErr) {
+              console.error('Failed to translate AI analysis:', translateErr);
+              // Continue with original Chinese content
+            }
+          }
+
           const highlightData = {
             title: language === 'zh' ? 'AI 竞对分析' : 'AI Competitor Analysis',
             summary: aiAnalysis.summary,

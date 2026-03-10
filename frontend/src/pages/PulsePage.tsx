@@ -1,5 +1,5 @@
-import { Newspaper, BarChart3, Building2, Bitcoin, TrendingUp, AlertTriangle, Sparkles, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { TrendingUp, AlertTriangle, Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import { api, getTrendColor } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -10,83 +10,6 @@ import {
 } from '../services/apiTranslation';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews } from '../services/api';
 
-// Module definitions
-const modules = [
-  {
-    title: 'News',
-    icon: Newspaper,
-    color: '#00c087',
-    path: '/news',
-  },
-  {
-    title: 'Markets',
-    icon: BarChart3,
-    color: '#2e9fff',
-    path: '/markets',
-  },
-  {
-    title: 'Company',
-    icon: Building2,
-    color: '#f0a93c',
-    path: '/company',
-  },
-  {
-    title: 'Crypto',
-    icon: Bitcoin,
-    color: '#8b5cf6',
-    path: '/crypto',
-  },
-];
-
-// Marquee/Ticker Component
-const ModuleTicker = ({ summaries }: { summaries: Record<string, string> }) => {
-  const [isPaused, setIsPaused] = useState(false);
-
-  return (
-    <div className="relative overflow-hidden py-2">
-      <div 
-        className={`flex gap-4 ${isPaused ? '' : 'animate-marquee'}`}
-        style={{
-          animation: isPaused ? 'none' : 'marquee 30s linear infinite',
-        }}
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
-      >
-        {/* Duplicate modules for seamless loop */}
-        {[...modules, ...modules].map((module, idx) => {
-          const Icon = module.icon;
-          return (
-            <div
-              key={idx}
-              className="flex-shrink-0 w-[280px] bg-okx-bg-secondary rounded-lg p-4 cursor-pointer group"
-              style={{ 
-                boxShadow: '0 0 0 1px rgba(255,255,255,0.25), 0 0 20px rgba(255,255,255,0.1)',
-                border: '1px solid rgba(255,255,255,0.2)'
-              }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center" style={{ backgroundColor: module.color + '20' }}>
-                  <Icon size={16} style={{ color: module.color }} />
-                </div>
-                <span className="text-white font-medium">{module.title}</span>
-                <ChevronRight size={14} className="text-okx-text-muted ml-auto group-hover:text-white transition-colors" />
-              </div>
-              <p className="text-okx-text-secondary text-xs line-clamp-2">
-                {summaries[module.title.toLowerCase()] || 'Loading...'}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-      <style>{`
-        @keyframes marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-      `}</style>
-    </div>
-  );
-};
 
 export const PulsePage = () => {
   const { language } = useLanguage();
@@ -97,40 +20,67 @@ export const PulsePage = () => {
   const [latestNews, setLatestNews] = useState<ProcessedNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [isTranslating, setIsTranslating] = useState(false);
 
-  // Fetch all pulse data
+  // Fetch all pulse data (including comprehensive analysis from 4 pages)
   const fetchPulseData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
 
     try {
-      const [summaryData, recData, trendsData, newsData] = await Promise.all([
-        api.getPulseSummary(),
-        api.getPulseRecommendations(),
-        api.getPulseTrends('7d'),
-        api.getTrendingNews(5),
-      ]);
-
-      // 如果是中文，翻译数据
-      if (language === 'zh') {
-        setIsTranslating(true);
-        const [translatedSummary, translatedRecs, translatedTrends, translatedNews] = await Promise.all([
-          translatePulseSummary(summaryData, 'zh'),
-          translatePulseRecommendations(recData.recommendations, 'zh'),
-          translateTrendPrediction(trendsData, 'zh'),
-          translateProcessedNews(newsData, 'zh'),
-        ]);
-        setPulseSummary(translatedSummary);
-        setRecommendations(translatedRecs);
-        setTrends(translatedTrends);
-        setLatestNews(translatedNews);
-        setIsTranslating(false);
-      } else {
-        setPulseSummary(summaryData);
-        setRecommendations(recData.recommendations);
-        setTrends(trendsData);
-        setLatestNews(newsData);
+      // Fetch comprehensive analysis from all 4 pages
+      const comprehensiveRes = await fetch(`http://localhost:8000/api/pulse/comprehensive?language=${language}`);
+      let comprehensiveData = null;
+      if (comprehensiveRes.ok) {
+        comprehensiveData = await comprehensiveRes.json();
       }
+
+      // Fetch trending news
+      const newsData = await api.getTrendingNews(5);
+      let translatedNews = newsData;
+      if (language === 'zh') {
+        translatedNews = await translateProcessedNews(newsData, 'zh');
+      }
+
+      // Use comprehensive analysis if available, otherwise use individual APIs
+      if (comprehensiveData?.comprehensive_analysis) {
+        const analysis = comprehensiveData.comprehensive_analysis;
+        setPulseSummary({
+          market_pulse: analysis.market_pulse,
+          key_insights: analysis.key_insights,
+          hot_sectors: analysis.hot_sectors,
+          overall_sentiment: analysis.overall_sentiment,
+          trend_prediction: analysis.trend_prediction,
+          action_items: analysis.action_items,
+          risk_alerts: analysis.risk_alerts,
+        });
+        // Use comprehensive analysis for recommendations too
+        setRecommendations([]);
+        // Use comprehensive trends - set null as we're using the summary directly
+        setTrends(null);
+      } else {
+        // Fallback to individual APIs
+        const [summaryData, recData, trendsData] = await Promise.all([
+          api.getPulseSummary(),
+          api.getPulseRecommendations(),
+          api.getPulseTrends('7d'),
+        ]);
+
+        if (language === 'zh') {
+          const [translatedSummary, translatedRecs, translatedTrends] = await Promise.all([
+            translatePulseSummary(summaryData, 'zh'),
+            translatePulseRecommendations(recData.recommendations, 'zh'),
+            translateTrendPrediction(trendsData, 'zh'),
+          ]);
+          setPulseSummary(translatedSummary);
+          setRecommendations(translatedRecs);
+          setTrends(translatedTrends);
+        } else {
+          setPulseSummary(summaryData);
+          setRecommendations(recData.recommendations);
+          setTrends(trendsData);
+        }
+      }
+
+      setLatestNews(translatedNews);
     } catch (err) {
       console.error('Failed to fetch pulse data:', err);
     } finally {
@@ -157,20 +107,12 @@ export const PulsePage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 语言变化时重新翻译数据
+  // 语言变化时重新获取数据
   useEffect(() => {
     if (!loading) {
       fetchPulseData(false);
     }
   }, [language]);
-
-  // Build module summaries from latest news
-  const moduleSummaries = {
-    news: latestNews[0]?.summary || (language === 'zh' ? '处理最新新闻...' : 'Processing latest news...'),
-    markets: trends ? (language === 'zh' ? `整体趋势：${trends.overall_trend}。置信度：${trends.prediction_confidence}%` : `Overall trend: ${trends.overall_trend}. Confidence: ${trends.prediction_confidence}%`) : (language === 'zh' ? '分析市场数据...' : 'Analyzing market data...'),
-    company: language === 'zh' ? '监控交易所公告...' : 'Monitoring exchange announcements...',
-    crypto: language === 'zh' ? '追踪价格波动...' : 'Tracking price movements...',
-  };
 
   if (loading) {
     return (
@@ -181,10 +123,10 @@ export const PulsePage = () => {
   }
 
   return (
-    <div className={isTranslating ? 'opacity-70' : ''}>
+    <div>
       {/* Daily Market Pulse - AI Generated with glow */}
       <div className="bg-okx-bg-secondary rounded-lg p-5 mb-6"
-        style={{ 
+        style={{
           boxShadow: '0 0 0 2px rgba(255,255,255,0.4), 0 0 40px rgba(255,255,255,0.3), 0 0 80px rgba(255,255,255,0.15)',
           border: '2px solid rgba(255,255,255,0.3)'
         }}
@@ -198,13 +140,13 @@ export const PulsePage = () => {
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-semibold text-white">Daily Market Pulse</h1>
                 <span className="text-okx-text-muted text-xs">
-                  {currentTime.toLocaleString('en-HK', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
+                  {currentTime.toLocaleString('en-HK', {
+                    year: 'numeric',
+                    month: '2-digit',
                     day: '2-digit',
-                    hour: '2-digit', 
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false 
+                    hour12: false
                   })} HKT
                 </span>
               </div>
@@ -217,13 +159,13 @@ export const PulsePage = () => {
                 Refresh
               </button>
             </div>
-            
+
             {pulseSummary ? (
               <>
                 <p className="text-okx-text-secondary text-sm leading-relaxed">
                   {pulseSummary.market_pulse}
                 </p>
-                
+
                 {/* Key Insights */}
                 {pulseSummary.key_insights.length > 0 && (
                   <div className="mt-3 space-y-1">
@@ -250,7 +192,7 @@ export const PulsePage = () => {
 
                 {/* Overall Sentiment */}
                 <div className="flex items-center gap-6 mt-3 text-xs">
-                  <span className="text-okx-text-muted">Sentiment: 
+                  <span className="text-okx-text-muted">Sentiment:
                     <span className={`ml-1 font-medium ${getTrendColor(pulseSummary.overall_sentiment)}`}>
                       {pulseSummary.overall_sentiment.toUpperCase()}
                     </span>
@@ -264,15 +206,6 @@ export const PulsePage = () => {
             )}
           </div>
         </div>
-      </div>
-
-      {/* Module Intelligence - Horizontal Scrolling Ticker */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-white font-medium">Module Intelligence</h2>
-          <span className="text-okx-text-muted text-xs">Hover to pause</span>
-        </div>
-        <ModuleTicker summaries={moduleSummaries} />
       </div>
 
       {/* Two Column Layout */}

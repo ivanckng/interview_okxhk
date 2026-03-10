@@ -201,17 +201,25 @@ class DeepSeekCompetitorAgent:
         """Legacy method for backward compatibility - defaults to Bybit"""
         return await self.analyze_bybit_announcements(announcements)
     
-    async def generate_competitor_summary(self, all_announcements: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def generate_competitor_summary(self, all_announcements: List[Dict[str, Any]], language: str = "zh") -> Dict[str, Any]:
         """
         Generate overall competitor analysis summary from all exchanges
         """
         if not self.api_key or not all_announcements:
-            return {
-                "summary": "暂无竞对数据进行分析",
-                "overall_trend": "neutral",
-                "trend_label": "暂无数据",
-                "key_points": []
-            }
+            if language == "zh":
+                return {
+                    "summary": "暂无竞对数据进行分析",
+                    "overall_trend": "neutral",
+                    "trend_label": "暂无数据",
+                    "key_points": []
+                }
+            else:
+                return {
+                    "summary": "No competitor data available for analysis",
+                    "overall_trend": "neutral",
+                    "trend_label": "No Data",
+                    "key_points": []
+                }
         
         # Count by exchange
         bybit_count = sum(1 for a in all_announcements if a.get('exchange') == 'bybit')
@@ -292,13 +300,13 @@ class DeepSeekCompetitorAgent:
                     
                 except json.JSONDecodeError as e:
                     print(f"⚠️ Failed to parse summary response: {e}")
-                    return self._fallback_summary(all_announcements)
+                    return self._fallback_summary(all_announcements, language)
                     
         except Exception as e:
             print(f"⚠️ Summary generation failed: {e}")
-            return self._fallback_summary(all_announcements)
+            return self._fallback_summary(all_announcements, language)
     
-    def _fallback_summary(self, announcements: List[Dict]) -> Dict[str, Any]:
+    def _fallback_summary(self, announcements: List[Dict], language: str = "zh") -> Dict[str, Any]:
         """Fallback summary when AI fails"""
         bybit_count = sum(1 for a in announcements if a.get('exchange') == 'bybit')
         binance_count = sum(1 for a in announcements if a.get('exchange') == 'binance')

@@ -53,6 +53,7 @@ from agents.markets_agent import get_markets_aggregator
 from agents.crypto_agent import get_crypto_aggregator
 from agents.news_analysis_agent import get_deepseek_news_analysis_agent
 from agents.competitor_agent import get_competitor_agent
+from agents.pulse_agent import get_pulse_agent
 
 # Global state
 processed_news: List[ProcessedNews] = []
@@ -598,6 +599,7 @@ class CompetitorsAnalysisRequest(BaseModel):
     bybit: List[Dict] = []
     binance: List[Dict] = []
     bitget: List[Dict] = []
+    language: str = "zh"  # zh or en
 
 
 @app.post("/api/competitors/analysis")
@@ -608,25 +610,25 @@ async def get_competitors_analysis(request: CompetitorsAnalysisRequest):
     """
     try:
         agent = get_competitor_agent()
-        
+
         # Analyze each exchange's announcements
         all_analyzed = []
-        
+
         if request.bybit:
             bybit_analyzed = await agent.analyze_bybit_announcements(request.bybit)
             all_analyzed.extend(bybit_analyzed)
-        
+
         if request.binance:
             binance_analyzed = await agent.analyze_binance_announcements(request.binance)
             all_analyzed.extend(binance_analyzed)
-        
+
         if request.bitget:
             bitget_analyzed = await agent.analyze_bitget_announcements(request.bitget)
             all_analyzed.extend(bitget_analyzed)
-        
+
         # Generate overall competitor analysis summary
-        summary = await agent.generate_competitor_summary(all_analyzed)
-        
+        summary = await agent.generate_competitor_summary(all_analyzed, language=request.language)
+
         return {
             "ai_analysis": summary,
             "analyzed_count": len(all_analyzed),
@@ -782,11 +784,120 @@ async def get_pulse_trends(timeframe: str = "7d"):
     Get trend predictions from Qwen Agent
     """
     global processed_news
-    
+
     agent = get_qwen_agent()
     trends = await agent.predict_trends(processed_news, timeframe)
-    
+
     return trends
+
+
+@app.get("/api/pulse/comprehensive")
+async def get_pulse_comprehensive(language: str = "zh"):
+    """
+    Get comprehensive analysis from all four pages:
+    - News (热点新闻)
+    - Markets (宏观市场)
+    - Competitors (竞对动向)
+    - Crypto (加密货币)
+    
+    Integrates all data sources with AI analysis for holistic market intelligence
+    """
+    try:
+        # Collect data from all four pages
+        news_data = {
+            "news": processed_news[:20],
+            "trending": [n for n in processed_news if n.hot_score >= 70][:5],
+            "highlight": get_highlight_cache().get("news_highlight", {}),
+        }
+
+        # Markets data - use existing analysis endpoint
+        markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}}
+        try:
+            markets_client = get_comprehensive_market_client()
+            markets_data["data"] = await markets_client.get_global_summary()
+            markets_highlight_cache = get_highlight_cache()
+            markets_data["highlight"] = markets_highlight_cache.get("markets_highlight")
+            
+            # Get AI analysis from existing endpoint
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://localhost:8000/api/markets/analysis", timeout=30)
+                if resp.ok:
+                    markets_analysis_data = resp.json()
+                    markets_data["ai_analysis"] = markets_analysis_data.get("ai_analysis", {})
+        except Exception as e:
+            print(f"Error fetching markets data: {e}")
+
+        # Competitors data
+        competitors_data = {"announcements": [], "ai_analysis": {}}
+        try:
+            bybit_client = get_bybit_client()
+            binance_client = get_binance_client()
+            bitget_client = get_bitget_client()
+            competitor_agent = get_competitor_agent()
+
+            bybit_ann = bybit_client.get_announcements(locale="en-US", limit=10)
+            binance_ann = binance_client.get_announcements(limit=10)
+            bitget_ann = bitget_client.get_announcements(language="en_US", limit=10)
+
+            competitors_data["announcements"] = bybit_ann + binance_ann + bitget_ann
+
+            # Get AI analysis
+            competitors_data["ai_analysis"] = await competitor_agent.generate_competitor_summary(
+                competitors_data["announcements"], language=language
+            )
+        except Exception as e:
+            print(f"Error fetching competitors data: {e}")
+
+        # Crypto data - use existing analysis endpoint
+        crypto_data = {"coins": [], "global": {}, "highlight": {}, "ai_analysis": {}}
+        try:
+            crypto_client = get_crypto_price_client()
+            crypto_prices = await crypto_client.get_top_coins(20)
+            crypto_global = await crypto_client.get_global_data()
+            crypto_data["coins"] = crypto_prices
+            crypto_data["global"] = crypto_global
+            crypto_data["highlight"] = get_highlight_cache().get("crypto_highlight", {})
+            
+            # Get AI analysis from existing endpoint
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://localhost:8000/api/crypto/analysis", timeout=30)
+                if resp.ok:
+                    crypto_analysis_data = resp.json()
+                    crypto_data["ai_analysis"] = crypto_analysis_data.get("ai_analysis", {})
+        except Exception as e:
+            print(f"Error fetching crypto data: {e}")
+
+        # Generate comprehensive analysis using Pulse Agent
+        pulse_agent = get_pulse_agent()
+        comprehensive_analysis = await pulse_agent.generate_comprehensive_analysis(
+            news_data=news_data,
+            markets_data=markets_data,
+            competitors_data=competitors_data,
+            crypto_data=crypto_data,
+            language=language
+        )
+
+        return {
+            "comprehensive_analysis": comprehensive_analysis,
+            "data_sources": {
+                "news_count": len(news_data["news"]),
+                "markets_indicators": len(markets_data.get("data", {}).get("indicators", [])),
+                "competitors_announcements": len(competitors_data["announcements"]),
+                "crypto_coins": len(crypto_data["coins"]),
+            },
+            "last_updated": datetime.utcnow().isoformat(),
+        }
+
+    except Exception as e:
+        print(f"Error in comprehensive pulse analysis: {e}")
+        # Return fallback analysis
+        pulse_agent = get_pulse_agent()
+        return {
+            "comprehensive_analysis": pulse_agent._fallback_analysis(language),
+            "error": str(e),
+            "last_updated": datetime.utcnow().isoformat(),
+        }
 
 
 async def scheduled_news_refresh():
