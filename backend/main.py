@@ -41,10 +41,14 @@ from data_sources.newsdata import get_newsdata_client
 from data_sources.fred import get_fred_client
 from data_sources.tushare import get_tushare_client
 from data_sources.yfinance_data import get_yahoo_finance_client
+from data_sources.bybit_announcements import get_bybit_client
+from data_sources.binance_announcements import get_binance_client
+from data_sources.bitget_announcements import get_bitget_client
 from agents.news_agent import get_deepseek_markets_agent, get_deepseek_crypto_agent
 from agents.markets_agent import get_markets_aggregator
 from agents.crypto_agent import get_crypto_aggregator
 from agents.news_analysis_agent import get_deepseek_news_analysis_agent
+from agents.competitor_agent import get_competitor_agent
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -590,6 +594,59 @@ async def get_news_analysis(request: NewsAnalysisRequest):
     }
 
 
+class CompetitorsAnalysisRequest(BaseModel):
+    bybit: List[Dict] = []
+    binance: List[Dict] = []
+    bitget: List[Dict] = []
+
+
+@app.post("/api/competitors/analysis")
+async def get_competitors_analysis(request: CompetitorsAnalysisRequest):
+    """
+    Get AI analysis of all competitor exchange announcements
+    Updates every 10 minutes
+    """
+    try:
+        agent = get_competitor_agent()
+        
+        # Analyze each exchange's announcements
+        all_analyzed = []
+        
+        if request.bybit:
+            bybit_analyzed = await agent.analyze_bybit_announcements(request.bybit)
+            all_analyzed.extend(bybit_analyzed)
+        
+        if request.binance:
+            binance_analyzed = await agent.analyze_binance_announcements(request.binance)
+            all_analyzed.extend(binance_analyzed)
+        
+        if request.bitget:
+            bitget_analyzed = await agent.analyze_bitget_announcements(request.bitget)
+            all_analyzed.extend(bitget_analyzed)
+        
+        # Generate overall competitor analysis summary
+        summary = await agent.generate_competitor_summary(all_analyzed)
+        
+        return {
+            "ai_analysis": summary,
+            "analyzed_count": len(all_analyzed),
+            "last_updated": datetime.utcnow().isoformat(),
+            "refresh_interval": "10 minutes",
+        }
+    except Exception as e:
+        print(f"Error in competitors analysis: {e}")
+        return {
+            "ai_analysis": {
+                "summary": "Analyzing competitor data...",
+                "overall_trend": "neutral",
+                "trend_label": "Analyzing",
+                "key_points": []
+            },
+            "error": str(e),
+            "last_updated": datetime.utcnow().isoformat(),
+        }
+
+
 # ==================== Crypto Price API ====================
 
 @app.get("/api/crypto/prices")
@@ -882,6 +939,123 @@ async def get_cn_economy_indicators():
     tushare = get_tushare_client()
     result = await tushare.get_cn_indicators()
     return result
+
+
+@app.get("/api/exchanges/bybit/announcements")
+async def get_bybit_announcements_api(locale: str = "en-US", limit: int = 20):
+    """
+    Get Bybit exchange announcements with AI analysis
+    Real data from Bybit API, analyzed by DeepSeek Agent
+    
+    Args:
+        locale: Language locale (en-US, zh-CN)
+        limit: Number of announcements (max 100)
+    
+    Returns:
+        announcements: AI-analyzed Bybit announcements
+        source: Data source info
+        last_updated: HKT timestamp
+    """
+    from datetime import datetime, timedelta
+    
+    client = get_bybit_client()
+    agent = get_competitor_agent()
+    
+    # Fetch raw announcements
+    announcements = client.get_announcements(locale=locale, limit=limit)
+    
+    # Analyze with DeepSeek AI
+    analyzed = await agent.analyze_announcements(announcements)
+    
+    # Convert to HKT time
+    hkt_now = datetime.utcnow() + timedelta(hours=8)
+    
+    return {
+        "announcements": analyzed,
+        "source": "Bybit Official API + DeepSeek AI",
+        "source_url": "https://announcements.bybit.com/",
+        "locale": locale,
+        "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
+        "count": len(analyzed)
+    }
+
+
+@app.get("/api/exchanges/binance/announcements")
+async def get_binance_announcements_api(limit: int = 20, category: str = "all"):
+    """
+    Get Binance exchange announcements with AI analysis
+    Real data from Binance RSS feed, analyzed by DeepSeek Agent
+    
+    Args:
+        limit: Number of announcements
+        category: Feed category ('all', 'new_listings', 'latest_news')
+    
+    Returns:
+        announcements: AI-analyzed Binance announcements
+        source: Data source info
+        last_updated: HKT timestamp
+    """
+    from datetime import datetime, timedelta
+    
+    client = get_binance_client()
+    agent = get_competitor_agent()
+    
+    # Fetch raw announcements from RSS
+    announcements = client.get_announcements(limit=limit, category=category)
+    
+    # Analyze with DeepSeek Agent
+    analyzed = await agent.analyze_binance_announcements(announcements)
+    
+    # HKT timestamp
+    hkt_now = datetime.utcnow() + timedelta(hours=8)
+    
+    return {
+        "announcements": analyzed,
+        "source": "Binance RSS Feed + DeepSeek AI",
+        "source_url": "https://www.binance.com/en/support/announcement",
+        "category": category,
+        "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
+        "count": len(analyzed)
+    }
+
+
+@app.get("/api/exchanges/bitget/announcements")
+async def get_bitget_announcements_api(language: str = "en_US", limit: int = 20):
+    """
+    Get Bitget exchange announcements with AI analysis
+    Real data from Bitget API, analyzed by DeepSeek Agent
+    
+    Args:
+        language: Language code (en_US, zh_CN)
+        limit: Number of announcements
+    
+    Returns:
+        announcements: AI-analyzed Bitget announcements
+        source: Data source info
+        last_updated: HKT timestamp
+    """
+    from datetime import datetime, timedelta
+    
+    client = get_bitget_client()
+    agent = get_competitor_agent()
+    
+    # Fetch raw announcements from Bitget API
+    announcements = client.get_announcements(language=language, limit=limit)
+    
+    # Analyze with DeepSeek Agent
+    analyzed = await agent.analyze_bitget_announcements(announcements)
+    
+    # HKT timestamp
+    hkt_now = datetime.utcnow() + timedelta(hours=8)
+    
+    return {
+        "announcements": analyzed,
+        "source": "Bitget API + DeepSeek AI",
+        "source_url": "https://www.bitget.com/support/",
+        "language": language,
+        "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
+        "count": len(analyzed)
+    }
 
 
 if __name__ == "__main__":

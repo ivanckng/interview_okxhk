@@ -17,6 +17,14 @@ export interface Announcement {
   publishTime: string;
   importance: 'high' | 'medium' | 'low';
   description?: string;
+  // AI analysis fields
+  is_top?: boolean;
+  impact_level?: 'critical' | 'high' | 'medium' | 'low';
+  title_zh?: string;
+  summary_zh?: string;
+  isReal?: boolean;
+  priority_score?: number;
+  okx_action?: string;
 }
 
 export interface ExchangeConfig {
