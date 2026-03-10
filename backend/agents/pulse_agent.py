@@ -9,6 +9,14 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 
+class DateTimeEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
 class DeepSeekPulseAgent:
     """
     DeepSeek Agent for comprehensive pulse analysis
@@ -44,29 +52,77 @@ class DeepSeekPulseAgent:
             return self._fallback_analysis(language)
 
         # Prepare data summary for AI
+        news_list = news_data.get("news", [])
+        # ProcessNews is a Pydantic model, use model_dump() or attribute access
+        news_titles = ""
+        if news_list:
+            titles = []
+            for n in news_list[:5]:
+                # Handle both dict and Pydantic model
+                if hasattr(n, 'title'):
+                    # Pydantic model
+                    priority = getattr(n, 'priority', 'N/A')
+                    title = getattr(n, 'title', 'N/A')
+                    if hasattr(priority, 'value'):
+                        priority = priority.value
+                    titles.append(f"  - [{str(priority).upper()}] {str(title)[:80]}")
+                elif isinstance(n, dict):
+                    titles.append(f"  - [{n.get('priority', 'N/A').upper()}] {n.get('title', 'N/A')[:80]}")
+            news_titles = "\n".join(titles)
+        else:
+            news_titles = "暂无新闻数据"
+        
+        markets_analysis = markets_data.get("ai_analysis", {})
+        markets_summary = markets_analysis.get("market_pulse", "暂无宏观分析数据")[:200] if markets_analysis else "暂无宏观分析数据"
+        
+        # Get economy indicators data
+        markets_data_full = markets_data.get("markets_data", {})
+        economy_indicators = markets_data_full.get("economy_indicators", {})
+        
+        # Format economy indicators for AI
+        us_gdp = economy_indicators.get("us", {}).get("gdp_annual", {})
+        cn_gdp = economy_indicators.get("cn", {}).get("gdp_annual", {})
+        us_cpi = economy_indicators.get("us", {}).get("cpi", {})
+        cn_cpi = economy_indicators.get("cn", {}).get("cpi", {})
+        us_unemployment = economy_indicators.get("us", {}).get("unemployment", {})
+        
+        economy_summary = []
+        if us_gdp.get("value"):
+            economy_summary.append(f"• 美国 GDP 年率：{us_gdp.get('value')}% ({us_gdp.get('period', 'N/A')})")
+        if cn_gdp.get("value"):
+            economy_summary.append(f"• 中国 GDP 年率：{cn_gdp.get('value')}% ({cn_gdp.get('period', 'N/A')})")
+        if us_cpi.get("value"):
+            economy_summary.append(f"• 美国 CPI: {us_cpi.get('value')}% ({us_cpi.get('period', 'N/A')})")
+        if cn_cpi.get("value"):
+            economy_summary.append(f"• 中国 CPI: {cn_cpi.get('value')}% ({cn_cpi.get('period', 'N/A')})")
+        if us_unemployment.get("value"):
+            economy_summary.append(f"• 美国失业率：{us_unemployment.get('value')}% ({us_unemployment.get('period', 'N/A')})")
+        
+        economy_text = "\n".join(economy_summary) if economy_summary else "暂无经济指标数据"
+
         data_summary = {
             "news": {
                 "count": len(news_data.get("news", [])),
                 "trending_count": len(news_data.get("trending", [])),
-                "highlight": news_data.get("highlight", {}),
-                "top_news": news_data.get("news", [])[:5],
+                "highlight_summary": news_data.get("highlight", {}).get("summary", "暂无新闻摘要"),
+                "highlight_trend": news_data.get("highlight", {}).get("trend", "neutral"),
+                "top_news_titles": news_titles,
             },
             "markets": {
-                "global_data": markets_data.get("data", {}),
-                "highlight": markets_data.get("highlight", {}),
-                "analysis": markets_data.get("ai_analysis", {}),
+                "market_pulse": markets_summary,
+                "key_insights": markets_analysis.get("key_insights", [])[:2] if markets_analysis else [],
+                "has_data": bool(markets_analysis),
+                "economy_indicators": economy_text,
             },
             "competitors": {
                 "binance_count": len([a for a in competitors_data.get("announcements", []) if a.get("exchange") == "binance"]),
                 "bybit_count": len([a for a in competitors_data.get("announcements", []) if a.get("exchange") == "bybit"]),
                 "bitget_count": len([a for a in competitors_data.get("announcements", []) if a.get("exchange") == "bitget"]),
-                "analysis": competitors_data.get("ai_analysis", {}),
+                "analysis_summary": competitors_data.get("ai_analysis", {}).get("summary", "暂无竞对分析")[:200] if competitors_data.get("ai_analysis") else "暂无竞对分析",
             },
             "crypto": {
                 "coins_count": len(crypto_data.get("coins", [])),
-                "global_market": crypto_data.get("global", {}),
-                "highlight": crypto_data.get("highlight", {}),
-                "analysis": crypto_data.get("ai_analysis", {}),
+                "analysis_summary": crypto_data.get("ai_analysis", {}).get("market_pulse", "暂无加密分析")[:200] if crypto_data.get("ai_analysis") else "暂无加密分析",
             },
         }
 
@@ -104,22 +160,28 @@ class DeepSeekPulseAgent:
 【热点新闻】
 - 新闻数量：{data_summary['news']['count']} 条
 - 热点新闻：{data_summary['news']['trending_count']} 条
-- AI 摘要：{json.dumps(data_summary['news']['highlight'], ensure_ascii=False)[:500]}
+- 市场趋势：{data_summary['news']['highlight_trend']}
+- AI 摘要：{data_summary['news']['highlight_summary'][:300]}
+- 最新新闻:
+{data_summary['news']['top_news_titles']}
 
 【宏观市场】
-- AI 分析：{json.dumps(data_summary['markets']['analysis'], ensure_ascii=False)[:500]}
+- 经济指标数据:
+{data_summary['markets']['economy_indicators']}
+- 市场分析：{data_summary['markets']['market_pulse']}
+- 关键洞察：{', '.join(data_summary['markets']['key_insights']) if data_summary['markets']['key_insights'] else '暂无'}
 
 【竞对动向】
 - Binance: {data_summary['competitors']['binance_count']} 条公告
 - Bybit: {data_summary['competitors']['bybit_count']} 条公告
 - Bitget: {data_summary['competitors']['bitget_count']} 条公告
-- AI 分析：{json.dumps(data_summary['competitors']['analysis'], ensure_ascii=False)[:500]}
+- AI 分析：{data_summary['competitors']['analysis_summary']}
 
 【加密货币】
 - 监控币种：{data_summary['crypto']['coins_count']} 个
-- AI 分析：{json.dumps(data_summary['crypto']['analysis'], ensure_ascii=False)[:500]}
+- AI 分析：{data_summary['crypto']['analysis_summary']}
 
-请生成综合分析报告，返回 JSON 格式。"""
+注意：请基于以上所有数据（特别是经济指标数据）生成综合分析报告，返回 JSON 格式。"""
         else:
             system_prompt = """You are OKX's Chief Strategic Analyst, responsible for comprehensive analysis of global market dynamics.
 
@@ -153,20 +215,26 @@ Return JSON format:
 【Hot News】
 - News count: {data_summary['news']['count']}
 - Trending news: {data_summary['news']['trending_count']}
-- AI summary: {json.dumps(data_summary['news']['highlight'], ensure_ascii=False)[:500]}
+- Market trend: {data_summary['news']['highlight_trend']}
+- AI summary: {data_summary['news']['highlight_summary'][:300]}
+- Latest news:
+{data_summary['news']['top_news_titles']}
 
 【Macro Markets】
-- AI analysis: {json.dumps(data_summary['markets']['analysis'], ensure_ascii=False)[:500]}
+- Economic Indicators:
+{data_summary['markets']['economy_indicators']}
+- Market analysis: {data_summary['markets']['market_pulse']}
+- Key insights: {', '.join(data_summary['markets']['key_insights']) if data_summary['markets']['key_insights'] else 'None'}
 
 【Competitor Movements】
 - Binance: {data_summary['competitors']['binance_count']} announcements
 - Bybit: {data_summary['competitors']['bybit_count']} announcements
 - Bitget: {data_summary['competitors']['bitget_count']} announcements
-- AI analysis: {json.dumps(data_summary['competitors']['analysis'], ensure_ascii=False)[:500]}
+- AI analysis: {data_summary['competitors']['analysis_summary']}
 
 【Cryptocurrency】
 - Tracked coins: {data_summary['crypto']['coins_count']}
-- AI analysis: {json.dumps(data_summary['crypto']['analysis'], ensure_ascii=False)[:500]}
+- AI analysis: {data_summary['crypto']['analysis_summary']}
 
 Please generate comprehensive analysis report in JSON format."""
 

@@ -1,59 +1,30 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Bitcoin, Building2, RefreshCw, Clock, Newspaper, BarChart3, Sparkles, Globe } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Bitcoin, Building2, RefreshCw, Clock, Newspaper, BarChart3, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { ChatBot } from './ChatBot';
-import { useLanguage, type Language } from '../contexts/LanguageContext';
 
 export const Layout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showLangMenu, setShowLangMenu] = useState(false);
   const location = useLocation();
-  const { language, setLanguage } = useLanguage();
-  const langMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // 点击外部关闭语言菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (langMenuRef.current && !langMenuRef.current.contains(event.target as Node)) {
-        setShowLangMenu(false);
-      }
-    };
-
-    if (showLangMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showLangMenu]);
-
   const handleRefresh = () => {
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  const handleLanguageChange = (lang: Language) => {
-    setLanguage(lang);
-    localStorage.setItem('preferred-language', lang);
-    setShowLangMenu(false);
-  };
-
-  const languageLabel = language === 'zh' ? '简体中文' : 'English';
-
-  // 导航栏标签（固定中英文映射）
+  // 导航栏标签（固定简体中文）
   const navLabels = {
-    pulse: language === 'zh' ? '市场脉搏' : 'Pulse',
-    news: language === 'zh' ? '热点新闻' : 'News',
-    markets: language === 'zh' ? '宏观市场' : 'Markets',
-    company: language === 'zh' ? '竞对动向' : 'Competitors',
-    crypto: language === 'zh' ? '加密货币' : 'Crypto',
+    pulse: '市场脉搏',
+    news: '热点新闻',
+    markets: '宏观市场',
+    company: '竞对动向',
+    crypto: '加密货币',
   };
 
   const navItems = [
@@ -119,38 +90,6 @@ export const Layout = () => {
                 })} HKT</span>
               </div>
 
-              {/* Language Selector */}
-              <div className="relative" ref={langMenuRef}>
-                <button
-                  onClick={() => setShowLangMenu(!showLangMenu)}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs text-okx-text-secondary hover:text-white transition-colors border border-okx-border rounded hover:border-okx-border-light"
-                >
-                  <Globe size={12} />
-                  <span>{languageLabel}</span>
-                </button>
-
-                {showLangMenu && (
-                  <div className="absolute right-0 mt-1 w-32 bg-okx-bg-secondary border border-okx-border rounded-lg shadow-xl z-50">
-                    <button
-                      onClick={() => handleLanguageChange('en')}
-                      className={`w-full px-3 py-2 text-left text-xs transition-colors hover:bg-okx-border rounded-t-lg ${
-                        language === 'en' ? 'text-white bg-white/10' : 'text-okx-text-secondary'
-                      }`}
-                    >
-                      English
-                    </button>
-                    <button
-                      onClick={() => handleLanguageChange('zh')}
-                      className={`w-full px-3 py-2 text-left text-xs transition-colors hover:bg-okx-border rounded-b-lg ${
-                        language === 'zh' ? 'text-white bg-white/10' : 'text-okx-text-secondary'
-                      }`}
-                    >
-                      简体中文
-                    </button>
-                  </div>
-                )}
-              </div>
-
               <button
                 onClick={handleRefresh}
                 className="p-2 text-okx-text-secondary hover:text-white transition-colors"
@@ -192,15 +131,6 @@ export const Layout = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Outlet />
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-okx-border mt-auto bg-black">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <p className="text-okx-text-muted text-xs text-center">
-            {language === 'zh' ? '数据仅供参考' : 'Data is for demonstration purposes only'}
-          </p>
-        </div>
-      </footer>
 
       {/* Chat Bot */}
       <ChatBot />

@@ -746,8 +746,8 @@ async def get_pulse_summary():
     agent = get_qwen_agent()
     summary = await agent.generate_pulse_summary(processed_news)
     
-    # Cache for 20 minutes
-    cache.set("pulse_summary", summary, ttl=1200)
+    # Cache for 30 minutes
+    cache.set("pulse_summary", summary, ttl=1800)
     
     return summary
 
@@ -807,23 +807,21 @@ async def get_pulse_comprehensive(language: str = "zh"):
         news_data = {
             "news": processed_news[:20],
             "trending": [n for n in processed_news if n.hot_score >= 70][:5],
-            "highlight": get_highlight_cache().get("news_highlight", {}),
+            "highlight": get_highlight_cache().get("news_highlight") or {},
         }
 
         # Markets data - use existing analysis endpoint
-        markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}}
+        markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}, "markets_data": {}}
         try:
-            markets_client = get_comprehensive_market_client()
-            markets_data["data"] = await markets_client.get_global_summary()
-            markets_highlight_cache = get_highlight_cache()
-            markets_data["highlight"] = markets_highlight_cache.get("markets_highlight")
-            
-            # Get AI analysis from existing endpoint
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("http://localhost:8000/api/markets/analysis", timeout=30)
-                if resp.ok:
+            # Get AI analysis from existing endpoint which contains economy_indicators
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get("http://localhost:8000/api/markets/analysis", timeout=60.0)
+                if resp.is_success:
                     markets_analysis_data = resp.json()
+                    markets_data["_raw_response"] = markets_analysis_data
                     markets_data["ai_analysis"] = markets_analysis_data.get("ai_analysis", {})
+                    markets_data["markets_data"] = markets_analysis_data.get("markets_data", {})
+                    markets_data["highlight"] = markets_analysis_data.get("markets_data", {}).get("highlight", {})
         except Exception as e:
             print(f"Error fetching markets data: {e}")
 
@@ -856,13 +854,12 @@ async def get_pulse_comprehensive(language: str = "zh"):
             crypto_global = await crypto_client.get_global_data()
             crypto_data["coins"] = crypto_prices
             crypto_data["global"] = crypto_global
-            crypto_data["highlight"] = get_highlight_cache().get("crypto_highlight", {})
-            
+            crypto_data["highlight"] = get_highlight_cache().get("crypto_highlight") or {}
+
             # Get AI analysis from existing endpoint
-            import httpx
             async with httpx.AsyncClient() as client:
                 resp = await client.get("http://localhost:8000/api/crypto/analysis", timeout=30)
-                if resp.ok:
+                if resp.is_success:
                     crypto_analysis_data = resp.json()
                     crypto_data["ai_analysis"] = crypto_analysis_data.get("ai_analysis", {})
         except Exception as e:

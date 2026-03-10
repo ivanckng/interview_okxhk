@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, AlertTriangle, Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import { TrendingUp, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
 import { api, getTrendColor } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -19,11 +19,12 @@ export const PulsePage = () => {
   const [trends, setTrends] = useState<TrendPrediction | null>(null);
   const [latestNews, setLatestNews] = useState<ProcessedNews[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
 
   // Fetch all pulse data (including comprehensive analysis from 4 pages)
   const fetchPulseData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
+    setAnalysisLoading(true);
 
     try {
       // Fetch comprehensive analysis from all 4 pages
@@ -52,8 +53,13 @@ export const PulsePage = () => {
           action_items: analysis.action_items,
           risk_alerts: analysis.risk_alerts,
         });
-        // Use comprehensive analysis for recommendations too
-        setRecommendations([]);
+        // Fetch recommendations separately
+        const recData = await api.getPulseRecommendations();
+        let translatedRecs = recData.recommendations;
+        if (language === 'zh') {
+          translatedRecs = await translatePulseRecommendations(recData.recommendations, 'zh');
+        }
+        setRecommendations(translatedRecs);
         // Use comprehensive trends - set null as we're using the summary directly
         setTrends(null);
       } else {
@@ -85,13 +91,8 @@ export const PulsePage = () => {
       console.error('Failed to fetch pulse data:', err);
     } finally {
       setLoading(false);
+      setAnalysisLoading(false);
     }
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchPulseData(false);
-    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -150,14 +151,6 @@ export const PulsePage = () => {
                   })} HKT
                 </span>
               </div>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-okx-bg border border-okx-border rounded text-xs text-white hover:border-white/30 transition-all disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-                Refresh
-              </button>
             </div>
 
             {pulseSummary ? (
@@ -167,7 +160,7 @@ export const PulsePage = () => {
                 </p>
 
                 {/* Key Insights */}
-                {pulseSummary.key_insights.length > 0 && (
+                {pulseSummary.key_insights.length > 0 ? (
                   <div className="mt-3 space-y-1">
                     {pulseSummary.key_insights.map((insight, idx) => (
                       <div key={idx} className="flex items-start gap-2">
@@ -176,10 +169,15 @@ export const PulsePage = () => {
                       </div>
                     ))}
                   </div>
-                )}
+                ) : analysisLoading ? (
+                  <div className="mt-3 text-okx-text-muted text-sm flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {language === 'zh' ? '关键洞察分析中...' : 'Key insights analyzing...'}
+                  </div>
+                ) : null}
 
                 {/* Hot Sectors */}
-                {pulseSummary.hot_sectors.length > 0 && (
+                {pulseSummary.hot_sectors.length > 0 ? (
                   <div className="flex items-center gap-2 mt-3">
                     <span className="text-okx-text-muted text-xs">Hot Sectors:</span>
                     {pulseSummary.hot_sectors.map((sector) => (
@@ -188,21 +186,23 @@ export const PulsePage = () => {
                       </span>
                     ))}
                   </div>
-                )}
+                ) : analysisLoading ? (
+                  <div className="flex items-center gap-2 mt-3 text-okx-text-muted text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {language === 'zh' ? '热门板块分析中...' : 'Hot sectors analyzing...'}
+                  </div>
+                ) : null}
 
-                {/* Overall Sentiment */}
+                {/* Sources */}
                 <div className="flex items-center gap-6 mt-3 text-xs">
-                  <span className="text-okx-text-muted">Sentiment:
-                    <span className={`ml-1 font-medium ${getTrendColor(pulseSummary.overall_sentiment)}`}>
-                      {pulseSummary.overall_sentiment.toUpperCase()}
-                    </span>
-                  </span>
                   <span className="text-okx-text-muted">Sources: <span className="text-white">{latestNews.length + 20}</span></span>
-                  <span className="text-okx-text-muted">Updated: <span className="text-white">Just now</span></span>
                 </div>
               </>
             ) : (
-              <p className="text-okx-text-secondary text-sm">Loading market analysis...</p>
+              <div className="flex items-center gap-2 text-okx-text-secondary text-sm">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {language === 'zh' ? '市场数据分析中...' : 'Analyzing market data...'}
+              </div>
             )}
           </div>
         </div>
@@ -223,18 +223,33 @@ export const PulsePage = () => {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-okx-text-muted text-xs">7 Days</span>
                   </div>
-                  <p className="text-white text-sm">{pulseSummary.trend_prediction['7d']}</p>
+                  {pulseSummary.trend_prediction['7d'] ? (
+                    <p className="text-white text-sm">{pulseSummary.trend_prediction['7d']}</p>
+                  ) : analysisLoading ? (
+                    <div className="flex items-center gap-2 text-okx-text-muted text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {language === 'zh' ? '7 天预测分析中...' : '7-day prediction analyzing...'}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="px-4 py-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-okx-text-muted text-xs">30 Days</span>
                   </div>
-                  <p className="text-white text-sm">{pulseSummary.trend_prediction['30d']}</p>
+                  {pulseSummary.trend_prediction['30d'] ? (
+                    <p className="text-white text-sm">{pulseSummary.trend_prediction['30d']}</p>
+                  ) : analysisLoading ? (
+                    <div className="flex items-center gap-2 text-okx-text-muted text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {language === 'zh' ? '30 天预测分析中...' : '30-day prediction analyzing...'}
+                    </div>
+                  ) : null}
                 </div>
               </>
             ) : (
-              <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
-                Loading predictions...
+              <div className="px-4 py-6 text-center text-okx-text-muted text-sm flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {language === 'zh' ? '预测分析中...' : 'Predictions analyzing...'}
               </div>
             )}
             
@@ -299,9 +314,14 @@ export const PulsePage = () => {
                   </div>
                 );
               })
+            ) : analysisLoading ? (
+              <div className="px-4 py-6 text-center text-okx-text-muted text-sm flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {language === 'zh' ? 'AI 推荐分析中...' : 'AI recommendations analyzing...'}
+              </div>
             ) : (
               <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
-                Loading recommendations...
+                {language === 'zh' ? '暂无 AI 推荐' : 'No AI recommendations available'}
               </div>
             )}
           </div>

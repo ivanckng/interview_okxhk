@@ -20,7 +20,7 @@ const translationCache: Record<string, Record<string, string>> = {
 const STORAGE_KEY = 'preferred-language';
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // 从 localStorage 读取语言偏好，默认英文
+  // 从 localStorage 读取语言偏好，默认简体中文
   const [language, setLanguageState] = useState<Language>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY) as Language;
@@ -28,7 +28,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         return saved;
       }
     }
-    return 'en';
+    return 'zh'; // 默认简体中文
   });
 
   // 保存到 localStorage

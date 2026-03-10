@@ -73,14 +73,16 @@ export const CryptoPage = () => {
   const [globalData, setGlobalData] = useState<any>(null);
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
 
   // Fetch AI analysis data (every 10 minutes)
   useEffect(() => {
     const fetchAIAnalysis = async () => {
+      setAnalysisLoading(true);
       try {
         const response = await fetch(`http://localhost:8000/api/crypto/analysis`);
         const data = await response.json();
-        
+
         const aiAnalysis = data.ai_analysis;
         if (aiAnalysis && !aiAnalysis.error) {
           // Convert AI analysis to highlight format
@@ -91,7 +93,7 @@ export const CryptoPage = () => {
             highlights: aiAnalysis.key_insights?.slice(0, 3) || [],
             generated_at: new Date().toISOString(),
           };
-          
+
           // Translate if Chinese
           if (language === 'zh' && highlightData.summary) {
             const translated = await translateHighlightSummary(highlightData, 'zh');
@@ -102,15 +104,17 @@ export const CryptoPage = () => {
         }
       } catch (err) {
         console.error('Failed to fetch AI analysis:', err);
+      } finally {
+        setAnalysisLoading(false);
       }
     };
-    
+
     // Initial fetch
     fetchAIAnalysis();
-    
+
     // Refresh every 10 minutes (600000 ms)
     const interval = setInterval(fetchAIAnalysis, 600000);
-    
+
     return () => clearInterval(interval);
   }, [language]);
 
@@ -210,7 +214,7 @@ export const CryptoPage = () => {
   return (
     <div>
       {/* Copilot Highlight - AI Generated */}
-      {highlight && (
+      {highlight ? (
         <CopilotHighlight
           title={highlight.title}
           summary={highlight.summary}
@@ -218,7 +222,26 @@ export const CryptoPage = () => {
           trendLabel={highlight.trend === 'bullish' ? 'Bullish' : highlight.trend === 'bearish' ? 'Bearish' : 'Mixed'}
           keyPoints={highlight.highlights}
         />
-      )}
+      ) : analysisLoading ? (
+        <div className="bg-okx-bg-secondary border border-okx-border rounded-lg p-5 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center flex-shrink-0">
+              <Loader2 className="text-black animate-spin" size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-xl font-semibold text-white">AI Crypto Analysis</h1>
+                <span className="text-okx-text-muted text-xs">
+                  {language === 'zh' ? '分析进行中...' : 'Analysis in progress...'}
+                </span>
+              </div>
+              <p className="text-okx-text-secondary text-sm">
+                {language === 'zh' ? '正在分析加密货币市场数据...' : 'Analyzing cryptocurrency market data...'}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Data Source & Update Time */}
       <div className="flex items-center justify-between mb-3 text-xs text-okx-text-muted">

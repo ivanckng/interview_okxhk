@@ -80,11 +80,13 @@ export const NewsPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
   const initialLoaded = useRef(false);
 
   // Fetch data from API
   const fetchData = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
+    setAnalysisLoading(true);
     setError(null);
 
     try {
@@ -115,6 +117,7 @@ export const NewsPage = () => {
       setError('Failed to load news. Please try again.');
     } finally {
       setLoading(false);
+      setAnalysisLoading(false);
     }
   }, [language]);
 
@@ -155,7 +158,8 @@ export const NewsPage = () => {
   useEffect(() => {
     const fetchAIAnalysis = async () => {
       if (news.length === 0) return;
-      
+
+      setAnalysisLoading(true);
       try {
         const response = await fetch('http://localhost:8000/api/news/analysis', {
           method: 'POST',
@@ -163,7 +167,7 @@ export const NewsPage = () => {
           body: JSON.stringify({ news }),
         });
         const data = await response.json();
-        
+
         const aiAnalysis = data.ai_analysis;
         if (aiAnalysis && !aiAnalysis.error) {
           // Convert AI analysis to highlight format
@@ -174,7 +178,7 @@ export const NewsPage = () => {
             highlights: aiAnalysis.action_items?.slice(0, 3) || aiAnalysis.key_insights?.slice(0, 3) || [],
             generated_at: new Date().toISOString(),
           };
-          
+
           // Translate if Chinese
           if (language === 'zh' && highlightData.summary) {
             const translated = await translateHighlightSummary(highlightData, 'zh');
@@ -185,12 +189,14 @@ export const NewsPage = () => {
         }
       } catch (err) {
         console.error('Failed to fetch AI news analysis:', err);
+      } finally {
+        setAnalysisLoading(false);
       }
     };
-    
+
     // Initial fetch
     fetchAIAnalysis();
-    
+
     // Refresh every 10 minutes (600000 ms)
     const interval = setInterval(fetchAIAnalysis, 600000);
     return () => clearInterval(interval);
@@ -246,7 +252,7 @@ export const NewsPage = () => {
   return (
     <div>
       {/* Copilot Highlight - AI Generated */}
-      {highlight && (
+      {highlight ? (
         <CopilotHighlight
           title={highlight.title}
           summary={highlight.summary}
@@ -254,7 +260,26 @@ export const NewsPage = () => {
           trendLabel={highlight.trend === 'bullish' ? 'Bullish' : highlight.trend === 'bearish' ? 'Bearish' : 'Mixed'}
           keyPoints={highlight.highlights}
         />
-      )}
+      ) : analysisLoading ? (
+        <div className="bg-okx-bg-secondary border border-okx-border rounded-lg p-5 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center flex-shrink-0">
+              <Loader2 className="text-black animate-spin" size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-xl font-semibold text-white">AI News Analysis</h1>
+                <span className="text-okx-text-muted text-xs">
+                  {language === 'zh' ? '分析进行中...' : 'Analysis in progress...'}
+                </span>
+              </div>
+              <p className="text-okx-text-secondary text-sm">
+                {language === 'zh' ? '正在分析热点新闻数据...' : 'Analyzing news data...'}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
