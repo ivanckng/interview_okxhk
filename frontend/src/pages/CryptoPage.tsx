@@ -220,6 +220,18 @@ export const CryptoPage = () => {
         />
       )}
 
+      {/* Data Source & Update Time */}
+      <div className="flex items-center justify-between mb-3 text-xs text-okx-text-muted">
+        <span>{language === 'zh' ? '来源: CoinGecko' : 'Source: CoinGecko'}</span>
+        <span>{language === 'zh' ? '更新时间 (HKT): ' : 'Updated (HKT): '}{new Date().toLocaleString('zh-CN', { 
+          timeZone: 'Asia/Hong_Kong',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}</span>
+      </div>
+
       {/* Search & Filter */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
@@ -252,7 +264,7 @@ export const CryptoPage = () => {
 
       {/* Global Stats */}
       {globalData && (
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-4 gap-3 mb-2">
           <div className="bg-okx-bg-secondary border border-okx-border rounded p-3">
             <p className="text-okx-text-muted text-xs mb-1">{t.marketCap}</p>
             <p className="text-xl font-bold text-white font-mono">

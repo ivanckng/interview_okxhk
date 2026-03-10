@@ -6,7 +6,7 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +24,11 @@ class TranslateRequest(BaseModel):
     text: str
     target_lang: str = "ZH"  # ZH 为中文，EN 为英文
 
+
+# 新闻分析请求模型
+class NewsAnalysisRequest(BaseModel):
+    news: List[Dict[str, Any]]
+
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
@@ -39,6 +44,7 @@ from data_sources.yfinance_data import get_yahoo_finance_client
 from agents.news_agent import get_deepseek_markets_agent, get_deepseek_crypto_agent
 from agents.markets_agent import get_markets_aggregator
 from agents.crypto_agent import get_crypto_aggregator
+from agents.news_analysis_agent import get_deepseek_news_analysis_agent
 
 # Load environment variables from backend directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -236,16 +242,22 @@ async def get_news_highlight():
     cache = get_highlight_cache()
     cached = cache.get("news_highlight")
     
-    if cached:
+    # Always regenerate if we have news data but cached is empty/default
+    global processed_news
+    has_real_news = len(processed_news) > 0
+    is_cached_default = cached and cached.get("title") == "No Recent News"
+    
+    if cached and not is_cached_default:
         return HighlightSummary(**cached)
     
     # Generate new highlight
-    global processed_news
+    print(f"📝 Generating news highlight for {len(processed_news)} news items...")
     agent = get_deepseek_agent()
     highlight = await agent.generate_news_highlight(processed_news)
     
     # Cache for 30 minutes
     cache.set("news_highlight", highlight.model_dump(), ttl=1800)
+    print(f"✅ Highlight generated: {highlight.title}")
     
     return highlight
 
@@ -552,6 +564,26 @@ async def get_crypto_analysis():
     
     return {
         "crypto_data": crypto_data,
+        "ai_analysis": analysis.get("analysis", {}),
+        "last_updated": analysis.get("cached_at", ""),
+        "refresh_interval": "10 minutes",
+    }
+
+
+@app.post("/api/news/analysis")
+async def get_news_analysis(request: NewsAnalysisRequest):
+    """
+    Get AI analysis of news data
+    Similar to markets/analysis and crypto/analysis
+    Updates every 10 minutes
+    """
+    analyst = get_deepseek_news_analysis_agent()
+    
+    # Get AI analysis
+    analysis = await analyst.analyze_news(request.news)
+    
+    return {
+        "news_data": request.news,
         "ai_analysis": analysis.get("analysis", {}),
         "last_updated": analysis.get("cached_at", ""),
         "refresh_interval": "10 minutes",

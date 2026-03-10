@@ -76,6 +76,7 @@ class DeepSeekAgent:
         system_prompt = """You are an OKX Business Operations Intelligence Agent. You work for OKX company (not for traders). Your job is to analyze crypto news from OKX's business perspective and identify what OKX operations team should pay attention to.
 
 Analyze the given news and return a JSON object with the following fields:
+- title: Create a clean, professional headline (max 15 words) that captures the key news. Remove source prefixes like "BWENEWS:", "AggrNews:" and eliminate duplicate bilingual text. Output should be a single concise English headline.
 - category: one of [regulation, technology, market, security, adoption, defi, nft]
 - priority: one of [high, medium, low] based on impact to OKX business operations
 - summary: concise 1-2 sentence summary in ENGLISH analyzing what this means for OKX as a company (analyze Chinese news but output in English)
@@ -83,6 +84,24 @@ Analyze the given news and return a JSON object with the following fields:
 - tags: array of 3-5 relevant keywords in English
 - sentiment: one of [positive, negative, neutral] from OKX company business perspective
 - key_topics: array of main topics discussed (in English)
+
+Guidelines for title formatting:
+- Remove news source prefixes (BWENEWS, AggrNews, etc.)
+- Remove timestamps and dates
+- Remove separator lines (---)
+- Deduplicate bilingual content - keep only the English version
+- Keep it professional and news-worthy
+- Maximum 15 words, ideally 8-12 words
+
+Content relevance filtering - BE STRICT:
+- is_relevant: boolean indicating if this news is relevant to OKX crypto exchange operations
+- Set to FALSE for ANY of these:
+  * Promotional content about news channels, Telegram groups, or subscriptions (e.g., "Subscribe to our channel", "Join our group for updates")
+  * Content that explicitly states it has no crypto-related information
+  * Pure marketing messages with no substantive crypto news
+  * Announcements about other news sources rather than actual news
+- Set to TRUE for: regulatory news, competitor actions, market movements, security incidents, institutional adoption, product launches, exchange listings
+- CRITICAL: If the content is promoting a news channel/Telegram group, ALWAYS set is_relevant to FALSE regardless of other factors
 
 Focus on OKX business concerns:
 - Regulatory changes affecting exchange operations and compliance requirements
@@ -116,9 +135,17 @@ Publish Time: {raw_news.publish_time}"""
             
             result = json.loads(response)
             
+            # Use AI-optimized title if available, otherwise clean the original
+            optimized_title = result.get("title", raw_news.title)
+            if not optimized_title or optimized_title.strip() == "":
+                optimized_title = raw_news.title
+            
+            # Store relevance in raw_data for filtering
+            is_relevant = result.get("is_relevant", True)
+            
             return ProcessedNews(
                 id=raw_news.id,
-                title=raw_news.title,
+                title=optimized_title,
                 summary=result.get("summary", raw_news.title),
                 source=raw_news.source,
                 source_url=raw_news.source_url,
@@ -128,7 +155,8 @@ Publish Time: {raw_news.publish_time}"""
                 hot_score=result.get("hot_score", 50),
                 tags=result.get("tags", []),
                 sentiment=result.get("sentiment", "neutral"),
-                key_topics=result.get("key_topics", [])
+                key_topics=result.get("key_topics", []),
+                is_relevant=is_relevant
             )
         except Exception as e:
             print(f"⚠️ Failed to process news {raw_news.id}: {e}")
@@ -149,11 +177,30 @@ Publish Time: {raw_news.publish_time}"""
             )
     
     async def batch_process_news(self, raw_news_list: List[RawNewsItem]) -> List[ProcessedNews]:
-        """Process multiple news items"""
+        """Process multiple news items and filter out irrelevant ones"""
         results = []
         for news in raw_news_list:
             processed = await self.process_news(news)
-            results.append(processed)
+            
+            # Additional rule-based filtering for common spam patterns
+            title_lower = processed.title.lower()
+            summary_lower = processed.summary.lower()
+            is_spam = (
+                # Promotional patterns
+                'subscribe to our' in title_lower or
+                'subscribe to' in title_lower and 'channel' in title_lower or
+                'join our' in title_lower and ('group' in title_lower or 'channel' in title_lower) or
+                # Low relevance indicators
+                processed.hot_score < 10 and 'promotional' in summary_lower or
+                'no direct crypto' in summary_lower or
+                'no substantive crypto' in summary_lower
+            )
+            
+            # Filter out if marked irrelevant by AI or matches spam patterns
+            if getattr(processed, 'is_relevant', True) and not is_spam:
+                results.append(processed)
+            else:
+                print(f"🚫 Filtered out irrelevant news: {processed.title[:50]}...")
         return results
     
     async def generate_news_highlight(self, news_items: List[ProcessedNews]) -> HighlightSummary:

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { NewsCategory, NewsPriority } from '../types/news';
 import {
   newsCategoryColors
@@ -21,6 +21,52 @@ const priorityConfig = {
   low: { color: 'text-gray-400', bg: 'bg-gray-500/10' },
 };
 
+// Helper to clean HTML tags, separators and deduplicate bilingual text
+const cleanHtml = (text: string): string => {
+  if (!text) return '';
+  
+  // First, replace <br/> with newline to help split
+  let cleaned = text.replace(/<br\s*\/?>/gi, '\n');
+  
+  // Remove HTML tags
+  cleaned = cleaned.replace(/<[^>]+>/g, '');
+  
+  // Split by common separators used in bilingual content
+  // BWENEWS uses patterns like: English content<br/>方程式新闻: Chinese content
+  const parts = cleaned.split(/\n/).map(p => p.trim()).filter(p => p.length > 0);
+  
+  // Find the main content (usually first meaningful line)
+  // Skip lines that are just separators, URLs, or dates
+  let mainContent = '';
+  for (const part of parts) {
+    // Skip separator lines
+    if (/^[\-—\s]+$/.test(part)) continue;
+    // Skip date-only lines (YYYY-MM-DD format)
+    if (/^\d{4}-\d{2}-\d{2}/.test(part)) continue;
+    // Skip URL-only lines
+    if (/^https?:\/\//.test(part)) continue;
+    // Skip empty promotional lines
+    if (part.includes('订阅我们的') && part.length < 50) continue;
+    if (part.includes('Subscribe to our') && part.length < 50) continue;
+    
+    // This looks like the main content
+    if (part.length > mainContent.length) {
+      mainContent = part;
+    }
+  }
+  
+  // If no main content found, use first non-empty line
+  if (!mainContent && parts.length > 0) {
+    mainContent = parts[0];
+  }
+  
+  // Clean up remaining issues
+  return mainContent
+    .replace(/-{10,}/g, '')  // Remove long dashes
+    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .trim();
+};
+
 const categories: NewsCategory[] = ['regulation', 'technology', 'market', 'security', 'adoption', 'defi', 'nft'];
 
 export const NewsPage = () => {
@@ -33,9 +79,11 @@ export const NewsPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const initialLoaded = useRef(false);
 
   // Fetch data from API
-  const fetchData = async (showLoading = true) => {
+  const fetchData = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
 
@@ -61,13 +109,14 @@ export const NewsPage = () => {
         setTrending(trendingData);
         setHighlight(highlightData);
       }
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to fetch news:', err);
       setError('Failed to load news. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [language]);
 
   // Refresh news from backend
   const handleRefresh = async () => {
@@ -85,19 +134,67 @@ export const NewsPage = () => {
 
   // Initial load
   useEffect(() => {
+    if (initialLoaded.current) return;
+    initialLoaded.current = true;
+    
     fetchData();
 
     // Auto refresh every 5 minutes
     const interval = setInterval(() => fetchData(false), 300000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
-  // 语言变化时重新翻译数据
+  // 语言变化时重新获取/翻译数据
   useEffect(() => {
-    if (!loading && language === 'zh') {
-      fetchData(false);
-    }
+    // Skip initial render (language is already handled by initial load)
+    // Only refetch when language changes after initial load
+    fetchData(false);
   }, [language]);
+
+  // Fetch AI analysis of news data (every 10 minutes)
+  useEffect(() => {
+    const fetchAIAnalysis = async () => {
+      if (news.length === 0) return;
+      
+      try {
+        const response = await fetch('http://localhost:8000/api/news/analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ news }),
+        });
+        const data = await response.json();
+        
+        const aiAnalysis = data.ai_analysis;
+        if (aiAnalysis && !aiAnalysis.error) {
+          // Convert AI analysis to highlight format
+          const highlightData = {
+            title: aiAnalysis.market_pulse ? 'AI News Analysis' : 'News Summary',
+            summary: aiAnalysis.market_pulse || 'Analyzing news data...',
+            trend: aiAnalysis.overall_sentiment || 'neutral',
+            highlights: aiAnalysis.action_items?.slice(0, 3) || aiAnalysis.key_insights?.slice(0, 3) || [],
+            generated_at: new Date().toISOString(),
+          };
+          
+          // Translate if Chinese
+          if (language === 'zh' && highlightData.summary) {
+            const translated = await translateHighlightSummary(highlightData, 'zh');
+            setHighlight(translated);
+          } else {
+            setHighlight(highlightData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch AI news analysis:', err);
+      }
+    };
+    
+    // Initial fetch
+    fetchAIAnalysis();
+    
+    // Refresh every 10 minutes (600000 ms)
+    const interval = setInterval(fetchAIAnalysis, 600000);
+    return () => clearInterval(interval);
+  }, [news, language]);
 
   // 类别标签中英文映射
   const categoryLabelMap: Record<NewsCategory, string> = {
@@ -161,7 +258,20 @@ export const NewsPage = () => {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-white">News Feed</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-white">{language === 'zh' ? '热点新闻' : 'News Feed'}</h1>
+          <div className="flex items-center gap-2 mt-1 text-xs text-okx-text-muted">
+            <span>{language === 'zh' ? '来源: BWEnews' : 'Source: BWEnews'}</span>
+            <span>•</span>
+            <span>{language === 'zh' ? '自动刷新: 5分钟' : 'Auto-refresh: 5 min'}</span>
+            {lastUpdated && (
+              <>
+                <span>•</span>
+                <span>{language === 'zh' ? '更新于: ' : 'Updated: '}{formatRelativeTime(lastUpdated.toISOString())}</span>
+              </>
+            )}
+          </div>
+        </div>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
@@ -198,7 +308,7 @@ export const NewsPage = () => {
                   </span>
                   <span className="text-white text-xs font-mono">{news.hot_score}</span>
                 </div>
-                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-white/80 transition-colors">{news.title}</h3>
+                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-white/80 transition-colors">{cleanHtml(news.title)}</h3>
                 <div className="flex items-center gap-2 mt-2 text-xs text-okx-text-muted">
                   <span>{news.source}</span>
                   <span>•</span>
@@ -305,7 +415,7 @@ export const NewsPage = () => {
                       </span>
                     </div>
 
-                    <h3 className="text-white font-medium mb-1">{news.title}</h3>
+                    <h3 className="text-white font-medium mb-1">{cleanHtml(news.title)}</h3>
                     <p className="text-okx-text-secondary text-sm mb-3">{news.summary}</p>
 
                     {news.tags.length > 0 && (

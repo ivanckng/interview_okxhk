@@ -55,6 +55,7 @@ class ProcessedNews(BaseModel):
     tags: List[str] = []
     sentiment: Optional[str] = None
     key_topics: List[str] = []
+    is_relevant: bool = True  # Flag to filter out promotional/non-crypto content
     processed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
