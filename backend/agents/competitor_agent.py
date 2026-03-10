@@ -135,8 +135,8 @@ class DeepSeekCompetitorAgent:
                             analysis_text = analysis_text[4:]
                     
                     analyzed = json.loads(analysis_text.strip())
-                    
-                    # Merge with original data to preserve fields like url, publish_time, type
+
+                    # Merge with original data to preserve fields like url, publish_time, type, priority_score
                     original_map = {a["id"]: a for a in announcements}
                     for item in analyzed:
                         orig = original_map.get(item["id"], {})
@@ -144,14 +144,16 @@ class DeepSeekCompetitorAgent:
                         item["publish_time"] = orig.get("publish_time", "")
                         item["exchange"] = orig.get("exchange", "")
                         item["type"] = item.get("type") or orig.get("type", "market")
-                    
+                        # Preserve priority_score from original data
+                        item["priority_score"] = orig.get("priority_score", 50)
+
                     # Sort by impact level and time
                     impact_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
                     analyzed.sort(key=lambda x: (
                         impact_order.get(x.get("impact_level", "low"), 4),
                         -self._parse_timestamp(x.get("publish_time", ""))
                     ))
-                    
+
                     print(f"✅ DeepSeek analyzed {len(analyzed)} announcements")
                     return analyzed
                     
@@ -175,14 +177,22 @@ class DeepSeekCompetitorAgent:
         """Fallback to rule-based processing if AI fails"""
         processed = []
         for item in announcements:
+            # Generate a simple summary from title if description is empty
+            desc = item.get("description", "")
+            if not desc:
+                # Use title as fallback summary
+                title = item.get("title", "")
+                desc = f"{title} - 暂无详细摘要"
+            
             processed.append({
                 **item,
                 "title_zh": item.get("title", ""),
-                "summary_zh": item.get("description", "") or "暂无摘要",
+                "summary_zh": desc,
                 "impact_level": "medium",
                 "is_top": False,
                 "url": item.get("url", ""),
                 "publish_time": item.get("publish_time", ""),
+                "priority_score": item.get("priority_score", 50),
             })
         return processed
     

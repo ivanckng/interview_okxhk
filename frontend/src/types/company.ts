@@ -1,12 +1,13 @@
 export type Exchange = 'binance' | 'bybit' | 'bitget';
 
-export type AnnouncementType = 
-  | 'new_listing' 
-  | 'delisting' 
-  | 'activity' 
-  | 'product_update' 
-  | 'maintenance' 
-  | 'rule_change';
+export type AnnouncementType =
+  | 'new_listing'
+  | 'delisting'
+  | 'activity'
+  | 'product_update'
+  | 'maintenance'
+  | 'rule_change'
+  | 'market';
 
 export interface Announcement {
   id: string;

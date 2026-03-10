@@ -29,6 +29,10 @@ class TranslateRequest(BaseModel):
 class NewsAnalysisRequest(BaseModel):
     news: List[Dict[str, Any]]
 
+# Load environment variables from backend directory
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(env_path)
+
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
@@ -49,10 +53,6 @@ from agents.markets_agent import get_markets_aggregator
 from agents.crypto_agent import get_crypto_aggregator
 from agents.news_analysis_agent import get_deepseek_news_analysis_agent
 from agents.competitor_agent import get_competitor_agent
-
-# Load environment variables from backend directory
-env_path = os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(env_path)
 
 # Global state
 processed_news: List[ProcessedNews] = []

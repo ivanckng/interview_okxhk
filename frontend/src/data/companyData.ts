@@ -15,6 +15,7 @@ export const announcementTypeLabels = {
     product_update: 'Product',
     maintenance: 'Maintenance',
     rule_change: 'Rule Change',
+    market: 'Market',
   },
   zh: {
     new_listing: '新币上线',
@@ -23,6 +24,7 @@ export const announcementTypeLabels = {
     product_update: '产品更新',
     maintenance: '维护',
     rule_change: '规则变更',
+    market: '市场',
   },
 };
 
@@ -33,6 +35,7 @@ export const announcementTypeColors: Record<AnnouncementType, string> = {
   product_update: '#3b82f6',
   maintenance: '#f59e0b',
   rule_change: '#6b7280',
+  market: '#14b8a6',
 };
 
 export const getAnnouncementTypeLabel = (type: AnnouncementType, lang: 'en' | 'zh' = 'en'): string => {

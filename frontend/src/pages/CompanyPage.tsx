@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { Exchange, AnnouncementType, Announcement } from '../types/company';
+import type { Exchange, AnnouncementType } from '../types/company';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -30,41 +30,49 @@ const impactConfig = {
   },
 };
 
-const announcementTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change'];
-
 // 固定的中英文翻译
 const staticTranslations = {
   en: {
-    exchangeFilter: 'Exchange:',
-    allExchanges: 'All',
-    typeFilter: 'Type:',
-    allTypes: 'All',
-    noAnnouncements: 'No announcements found for the selected filters.',
-    copilotTitle: 'Exchange Intelligence',
-    copilotSummary: "Binance leads with aggressive new listings and Launchpool rewards. ByBit focuses on derivatives innovation with Copy Trading 2.0. Bitget expands Launchpad offerings. Competition intensifies for retail users.",
-    copilotTrendLabel: 'Active',
-    copilotKeyPoints: ['New Listings', 'Zero-Fee Promo', 'Copy Trading 2.0', 'Launchpad Wars'],
+    noAnnouncements: 'No announcements found.',
     bybitSource: 'Bybit: Official API',
     binanceSource: 'Binance: RSS Feed',
     bitgetSource: 'Bitget: API',
     updatedAt: 'Updated',
     top: 'TOP',
+    filters: {
+      company: 'Company:',
+      impact: 'Impact:',
+      types: 'Type:',
+      all: 'All',
+      clearTypes: 'Clear',
+    },
+    impactLevels: {
+      critical: 'Critical',
+      high: 'High',
+      medium: 'Medium',
+      low: 'Low',
+    },
   },
   zh: {
-    exchangeFilter: '交易所：',
-    allExchanges: '全部',
-    typeFilter: '类型：',
-    allTypes: '全部',
-    noAnnouncements: '暂无符合筛选条件的公告。',
-    copilotTitle: '交易所情报',
-    copilotSummary: '币安以激进的新币上线和 Launchpool 奖励领先。ByBit 专注于衍生品创新，推出 Copy Trading 2.0。Bitget 扩展 Launchpad 产品。零售用户竞争加剧。',
-    copilotTrendLabel: '活跃',
-    copilotKeyPoints: ['新币上线', '零手续费促销', '跟单交易 2.0', 'Launchpad 竞争'],
-    bybitSource: 'Bybit: 官方API',
+    noAnnouncements: '暂无公告。',
+    bybitSource: 'Bybit: 官方 API',
     binanceSource: 'Binance: RSS Feed',
     bitgetSource: 'Bitget: API',
     updatedAt: '更新于',
     top: '置顶',
+    filters: {
+      company: '公司：',
+      impact: '影响程度：',
+      types: '类型：',
+      all: '全部',
+      clearTypes: '清除',
+    },
+    impactLevels: {
+      critical: '极高',
+      high: '高',
+      medium: '中',
+      low: '低',
+    },
   },
 };
 
@@ -88,8 +96,6 @@ interface ExchangeAnnouncement {
 
 export const CompanyPage = () => {
   const { language } = useLanguage();
-  const [selectedExchange, setSelectedExchange] = useState<Exchange | 'all'>('all');
-  const [selectedType, setSelectedType] = useState<AnnouncementType | 'all'>('all');
   const [bybitAnnouncements, setBybitAnnouncements] = useState<ExchangeAnnouncement[]>([]);
   const [bybitUpdateTime, setBybitUpdateTime] = useState<string>('');
   const [binanceAnnouncements, setBinanceAnnouncements] = useState<ExchangeAnnouncement[]>([]);
@@ -97,6 +103,7 @@ export const CompanyPage = () => {
   const [bitgetAnnouncements, setBitgetAnnouncements] = useState<ExchangeAnnouncement[]>([]);
   const [bitgetUpdateTime, setBitgetUpdateTime] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [analyzingAI, setAnalyzingAI] = useState(true);
   const [highlight, setHighlight] = useState<{
     title: string;
     summary: string;
@@ -104,63 +111,83 @@ export const CompanyPage = () => {
     trendLabel: string;
     keyPoints: string[];
   } | null>(null);
+  
+  // Filter states
+  const [selectedCompany, setSelectedCompany] = useState<Exchange | 'all'>('all');
+  const [selectedImpact, setSelectedImpact] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
+  const [selectedTypes, setSelectedTypes] = useState<AnnouncementType[]>([]);
 
   const t = staticTranslations[language];
-  
-  // Fallback highlight data
+
+  // Fallback highlight data (only shown when AI analysis fails)
   const fallbackHighlight = {
-    title: t.copilotTitle,
-    summary: t.copilotSummary,
-    trend: 'up' as const,
-    trendLabel: t.copilotTrendLabel,
-    keyPoints: t.copilotKeyPoints,
+    title: language === 'zh' ? '交易所情报' : 'Exchange Intelligence',
+    summary: language === 'zh' ? '暂无分析数据' : 'No analysis data available',
+    trend: 'neutral' as const,
+    trendLabel: language === 'zh' ? '暂无数据' : 'N/A',
+    keyPoints: [],
   };
 
   // Fetch AI analysis of competitor data (every 10 minutes)
   useEffect(() => {
     const hasData = bybitAnnouncements.length > 0 || binanceAnnouncements.length > 0 || bitgetAnnouncements.length > 0;
-    
+
     const fetchAIAnalysis = async () => {
-      if (!hasData) return;
-      
+      if (!hasData) {
+        setAnalyzingAI(false);
+        return;
+      }
+
+      // Set analyzing state
+      setAnalyzingAI(true);
+
       try {
         const allData = {
           bybit: bybitAnnouncements.slice(0, 10),
           binance: binanceAnnouncements.slice(0, 10),
           bitget: bitgetAnnouncements.slice(0, 10),
         };
-        
+
         const response = await fetch('http://localhost:8000/api/competitors/analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(allData),
         });
-        
-        if (!response.ok) return;
-        
+
+        if (!response.ok) {
+          setAnalyzingAI(false);
+          return;
+        }
+
         const data = await response.json();
         const aiAnalysis = data.ai_analysis;
-        
-        // Accept valid AI analysis (including fallback summary)
-        if (aiAnalysis && aiAnalysis.summary && aiAnalysis.summary.length > 10) {
+
+        // Accept valid AI analysis
+        if (aiAnalysis && aiAnalysis.summary && aiAnalysis.summary.length > 10 && aiAnalysis.summary !== '暂无竞对数据进行分析') {
           const highlightData = {
             title: language === 'zh' ? 'AI 竞对分析' : 'AI Competitor Analysis',
             summary: aiAnalysis.summary,
-            trend: (aiAnalysis.overall_trend === 'bullish' ? 'up' : 
+            trend: (aiAnalysis.overall_trend === 'bullish' ? 'up' :
                    aiAnalysis.overall_trend === 'bearish' ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
             trendLabel: aiAnalysis.trend_label || (language === 'zh' ? '分析完成' : 'Analyzed'),
             keyPoints: aiAnalysis.key_points?.slice(0, 4) || [],
           };
           setHighlight(highlightData);
+        } else {
+          // AI analysis failed, use fallback
+          setHighlight(null);
         }
       } catch (err) {
-        // Keep fallback on error
+        console.error('Failed to fetch AI analysis:', err);
+        setHighlight(null);
+      } finally {
+        setAnalyzingAI(false);
       }
     };
-    
+
     // Initial fetch with delay to ensure data is loaded
     const timeoutId = setTimeout(fetchAIAnalysis, 2000);
-    
+
     // Refresh every 10 minutes
     const interval = setInterval(fetchAIAnalysis, 600000);
     return () => {
@@ -176,13 +203,13 @@ export const CompanyPage = () => {
         let locale = language === 'zh' ? 'zh-CN' : 'en-US';
         let response = await fetch(`http://localhost:8000/api/exchanges/bybit/announcements?locale=${locale}&limit=20`);
         let data = await response.json();
-        
+
         // If zh-CN returns empty, fallback to en-US
         if ((!data.announcements || data.announcements.length === 0) && locale === 'zh-CN') {
           response = await fetch(`http://localhost:8000/api/exchanges/bybit/announcements?locale=en-US&limit=20`);
           data = await response.json();
         }
-        
+
         if (data.announcements) {
           setBybitAnnouncements(data.announcements);
           setBybitUpdateTime(data.last_updated);
@@ -196,7 +223,7 @@ export const CompanyPage = () => {
       try {
         const response = await fetch(`http://localhost:8000/api/exchanges/binance/announcements?limit=20`);
         const data = await response.json();
-        
+
         if (data.announcements) {
           setBinanceAnnouncements(data.announcements);
           setBinanceUpdateTime(data.last_updated);
@@ -211,7 +238,7 @@ export const CompanyPage = () => {
         let lang = language === 'zh' ? 'zh_CN' : 'en_US';
         const response = await fetch(`http://localhost:8000/api/exchanges/bitget/announcements?language=${lang}&limit=10`);
         const data = await response.json();
-        
+
         if (data.announcements) {
           setBitgetAnnouncements(data.announcements);
           setBitgetUpdateTime(data.last_updated);
@@ -232,20 +259,36 @@ export const CompanyPage = () => {
         setLoading(false);
       });
     };
-    
+
     loadAll();
-    
+
     // Refresh every 10 minutes
     const interval = setInterval(loadAll, 600000);
     return () => clearInterval(interval);
   }, [language]);
 
-  // Transform all announcements into unified format
-  const allAnnouncements: Announcement[] = useMemo(() => {
+  // Get all announcements sorted by priority
+  const allAnnouncements = useMemo(() => {
+    const validTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change', 'market'];
+
+    const normalizeType = (type: string): AnnouncementType => {
+      if (validTypes.includes(type as AnnouncementType)) {
+        return type as AnnouncementType;
+      }
+      const typeLower = type.toLowerCase();
+      if (typeLower.includes('list') && !typeLower.includes('delist')) return 'new_listing';
+      if (typeLower.includes('delist') || typeLower.includes('remov')) return 'delisting';
+      if (typeLower.includes('activ') || typeLower.includes('campaign') || typeLower.includes('promo')) return 'activity';
+      if (typeLower.includes('product') || typeLower.includes('feature') || typeLower.includes('update')) return 'product_update';
+      if (typeLower.includes('mainten') || typeLower.includes('system')) return 'maintenance';
+      if (typeLower.includes('rule') || typeLower.includes('fee') || typeLower.includes('policy')) return 'rule_change';
+      return 'product_update';
+    };
+
     const bybit = bybitAnnouncements.map(a => ({
       id: a.id,
       exchange: 'bybit' as Exchange,
-      type: a.type,
+      type: normalizeType(a.type),
       title: a.title,
       description: a.description,
       url: a.url,
@@ -257,12 +300,13 @@ export const CompanyPage = () => {
       isReal: true,
       is_top: a.is_top,
       priority_score: a.priority_score,
+      tags: a.tags || [],
     }));
-    
+
     const binance = binanceAnnouncements.map(a => ({
       id: a.id,
       exchange: 'binance' as Exchange,
-      type: a.type,
+      type: normalizeType(a.type),
       title: a.title,
       description: a.description,
       url: a.url,
@@ -274,12 +318,13 @@ export const CompanyPage = () => {
       isReal: true,
       is_top: a.is_top,
       priority_score: a.priority_score,
+      tags: a.tags || [],
     }));
-    
+
     const bitget = bitgetAnnouncements.map(a => ({
       id: a.id,
       exchange: 'bitget' as Exchange,
-      type: a.type,
+      type: normalizeType(a.type),
       title: a.title,
       description: a.description,
       url: a.url,
@@ -291,29 +336,38 @@ export const CompanyPage = () => {
       isReal: true,
       is_top: a.is_top,
       priority_score: a.priority_score,
+      tags: a.tags || [],
     }));
-    
-    return [...bybit, ...binance, ...bitget];
-  }, [bybitAnnouncements, binanceAnnouncements, bitgetAnnouncements]);
 
-  // Filter and sort announcements
-  const filteredAnnouncements = useMemo(() => {
-    // Filter
-    let result = allAnnouncements.filter(a => {
-      if (selectedExchange !== 'all' && a.exchange !== selectedExchange) return false;
-      if (selectedType !== 'all' && a.type !== selectedType) return false;
-      return true;
-    });
+    let all = [...bybit, ...binance, ...bitget];
 
-    // Sort: TOP first, then by priority_score, then by date
-    return [...result].sort((a, b) => {
-      if (b.is_top !== a.is_top) return (b.is_top ? 1 : 0) - (a.is_top ? 1 : 0);
-      if ((b.priority_score || 0) !== (a.priority_score || 0)) {
-        return (b.priority_score || 0) - (a.priority_score || 0);
+    // Apply filters
+    if (selectedCompany !== 'all') {
+      all = all.filter(a => a.exchange === selectedCompany);
+    }
+    if (selectedImpact !== 'all') {
+      all = all.filter(a => a.impact_level === selectedImpact);
+    }
+    if (selectedTypes.length > 0) {
+      all = all.filter(a => selectedTypes.includes(a.type));
+    }
+
+    // Sort: is_top first, then by priority_score, then by date
+    return all.sort((a, b) => {
+      if (b.is_top !== a.is_top) {
+        return (b.is_top ? 1 : 0) - (a.is_top ? 1 : 0);
+      }
+      const aScore = a.priority_score || 0;
+      const bScore = b.priority_score || 0;
+      if (bScore !== aScore) {
+        return bScore - aScore;
       }
       return new Date(b.publishTime).getTime() - new Date(a.publishTime).getTime();
     });
-  }, [selectedExchange, selectedType, allAnnouncements]);
+  }, [bybitAnnouncements, binanceAnnouncements, bitgetAnnouncements, selectedCompany, selectedImpact, selectedTypes]);
+
+  // All announcement types for the type filter
+  const allTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change', 'market'];
 
   if (loading) {
     return (
@@ -326,9 +380,19 @@ export const CompanyPage = () => {
   return (
     <div>
       {/* Copilot Highlight */}
-      <CopilotHighlight
-        {...(highlight || fallbackHighlight)}
-      />
+      {analyzingAI ? (
+        <CopilotHighlight
+          title={language === 'zh' ? 'AI 竞对分析' : 'AI Competitor Analysis'}
+          summary={language === 'zh' ? '正在分析竞对动态...' : 'Analyzing competitor data...'}
+          trend="neutral"
+          trendLabel={language === 'zh' ? '分析中' : 'Analyzing'}
+          keyPoints={[]}
+        />
+      ) : (
+        <CopilotHighlight
+          {...(highlight || fallbackHighlight)}
+        />
+      )}
 
       {/* Data Source Info */}
       <div className="flex items-center justify-between mb-4 text-xs text-okx-text-muted flex-wrap gap-2">
@@ -351,92 +415,116 @@ export const CompanyPage = () => {
         )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {exchanges.map((exchange) => {
-          // Always show total count for each exchange (represents data availability)
-          const count = allAnnouncements.filter(a => a.exchange === exchange.id).length;
-          return (
-            <div key={exchange.id} className="bg-okx-bg-secondary border border-okx-border rounded p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div 
-                  className="w-6 h-6 rounded text-white text-xs font-bold flex items-center justify-center"
-                  style={{ backgroundColor: exchange.color }}
-                >
-                  {exchange.logo}
-                </div>
-                <span className="text-okx-text-muted text-xs">{exchange.name}</span>
-              </div>
-              <p className="text-xl font-bold text-white font-mono">{count}</p>
-            </div>
-          );
-        })}
-      </div>
-
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 pb-4 border-b border-okx-border">
-        <span className="text-sm text-okx-text-muted mr-2">{t.exchangeFilter}</span>
-        <button
-          onClick={() => setSelectedExchange('all')}
-          className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-            selectedExchange === 'all'
-              ? 'bg-okx-accent text-black'
-              : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
-          }`}
-        >
-          {t.allExchanges}
-        </button>
-        {exchanges.map((exchange) => (
+      <div className="flex flex-wrap items-center gap-4 mb-6 pb-4 border-b border-okx-border">
+        {/* Company Filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-okx-text-muted">{t.filters.company}</span>
           <button
-            key={exchange.id}
-            onClick={() => setSelectedExchange(exchange.id)}
+            onClick={() => setSelectedCompany('all')}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-              selectedExchange === exchange.id
-                ? 'text-black'
+              selectedCompany === 'all'
+                ? 'bg-okx-accent text-black'
                 : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
             }`}
-            style={selectedExchange === exchange.id ? { backgroundColor: exchange.color } : {}}
           >
-            {exchange.name}
+            {t.filters.all}
           </button>
-        ))}
-      </div>
-
-      {/* Type Filter */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        <span className="text-sm text-okx-text-muted mr-2">{t.typeFilter}</span>
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value as AnnouncementType | 'all')}
-          className="bg-okx-bg-secondary border border-okx-border rounded px-3 py-1.5 text-white text-xs focus:outline-none focus:border-okx-accent"
-        >
-          <option value="all">{t.allTypes}</option>
-          {announcementTypes.map((type) => (
-            <option key={type} value={type}>
-              {getAnnouncementTypeLabel(type, language)}
-            </option>
+          {exchanges.map((exchange) => (
+            <button
+              key={exchange.id}
+              onClick={() => setSelectedCompany(exchange.id)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                selectedCompany === exchange.id
+                  ? 'text-black'
+                  : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
+              }`}
+              style={selectedCompany === exchange.id ? { backgroundColor: exchange.color } : {}}
+            >
+              {exchange.name}
+            </button>
           ))}
-        </select>
+        </div>
+
+        {/* Impact Filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-okx-text-muted">{t.filters.impact}</span>
+          <button
+            onClick={() => setSelectedImpact('all')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              selectedImpact === 'all'
+                ? 'bg-okx-accent text-black'
+                : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
+            }`}
+          >
+            {t.filters.all}
+          </button>
+          {(['critical', 'high', 'medium', 'low'] as const).map((impact) => (
+            <button
+              key={impact}
+              onClick={() => setSelectedImpact(impact)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                selectedImpact === impact
+                  ? impactConfig[language]?.[impact]?.bg + ' ' + impactConfig[language]?.[impact]?.color
+                  : 'bg-okx-bg-secondary text-okx-text-secondary border border-okx-border hover:text-white'
+              }`}
+            >
+              {t.impactLevels[impact]}
+            </button>
+          ))}
+        </div>
+
+        {/* Types Filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-okx-text-muted">{t.filters.types}</span>
+          {selectedTypes.length > 0 && (
+            <button
+              onClick={() => setSelectedTypes([])}
+              className="px-2 py-1 text-xs text-okx-text-muted hover:text-white transition-colors"
+            >
+              {t.filters.clearTypes}
+            </button>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {allTypes.map((type) => {
+              const isSelected = selectedTypes.includes(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setSelectedTypes(prev =>
+                      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+                    );
+                  }}
+                  className={`px-2 py-1 rounded text-xs transition-all ${
+                    isSelected
+                      ? 'bg-okx-accent text-black'
+                      : 'bg-okx-bg-secondary text-okx-text-muted border border-okx-border hover:text-white'
+                  }`}
+                >
+                  {getAnnouncementTypeLabel(type, language)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* List - debug: rendering {filteredAnnouncements.length} items */}
+      {/* List */}
       <div className="space-y-3">
-        {filteredAnnouncements.map((announcement) => {
+        {allAnnouncements.map((announcement, index) => {
           const exchange = exchanges.find(e => e.id === announcement.exchange)!;
           const impactLevel = announcement.impact_level || 'medium';
           const impactStyle = impactConfig[language]?.[impactLevel] || impactConfig[language]?.['medium'];
-          
-          // Use AI-analyzed Chinese title/summary if available
-          const displayTitle = language === 'zh' && announcement.title_zh 
-            ? announcement.title_zh 
+
+          // Use AI-analyzed Chinese title if available
+          const displayTitle = language === 'zh' && announcement.title_zh
+            ? announcement.title_zh
             : announcement.title;
-          const displaySummary = language === 'zh' && announcement.summary_zh
-            ? announcement.summary_zh
-            : announcement.description;
 
           return (
             <div
-              key={`${announcement.exchange}-${announcement.id}-${announcement.publishTime}`}
+              key={`${announcement.exchange}-${announcement.id}-${announcement.publishTime}-${index}`}
               className={`bg-okx-bg-secondary border rounded-lg p-4 hover:border-okx-border-light transition-all ${
                 announcement.is_top ? 'border-red-500/30' : 'border-okx-border'
               }`}
@@ -486,11 +574,6 @@ export const CompanyPage = () => {
                   {/* Title */}
                   <h3 className="text-white text-sm font-medium mb-1">{displayTitle}</h3>
 
-                  {/* AI Summary */}
-                  {displaySummary && (
-                    <p className="text-okx-text-secondary text-xs mb-2">{displaySummary}</p>
-                  )}
-
                   <a
                     href={announcement.url}
                     target="_blank"
@@ -506,7 +589,7 @@ export const CompanyPage = () => {
           );
         })}
 
-        {filteredAnnouncements.length === 0 && (
+        {allAnnouncements.length === 0 && (
           <div className="text-center py-12 text-okx-text-secondary">
             {t.noAnnouncements}
           </div>
