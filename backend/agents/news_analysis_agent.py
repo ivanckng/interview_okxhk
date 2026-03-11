@@ -117,11 +117,11 @@ Focus on:
                 result = {
                     "analysis": analysis,
                     "cached_at": datetime.utcnow().isoformat(),
-                    "refresh_interval": "10 minutes",
+                    "refresh_interval": "30 minutes",
                 }
-                
-                # Cache for 10 minutes
-                self._cache.set(cache_key, result, ttl=600)
+
+                # Cache for 30 minutes
+                self._cache.set(cache_key, result, ttl=1800)
                 print(f"✅ Cached DeepSeek news analysis")
                 
                 return result

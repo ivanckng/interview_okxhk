@@ -3,7 +3,7 @@ Bitget Announcements API Client
 Fetches real announcements from Bitget API
 API Documentation: https://www.bitget.com/api-doc/common/notice/Get-All-Notices
 """
-import requests
+import httpx
 from typing import List, Dict, Any
 from datetime import datetime
 import time
@@ -64,20 +64,21 @@ class BitgetAnnouncementClient:
             'language': language,
             'limit': min(limit, 10)
         }
-        
+
         try:
-            response = requests.get(
-                self.BASE_URL,
-                params=params,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'application/json',
-                },
-                timeout=15
-            )
-            response.raise_for_status()
-            
-            data = response.json()
+            with httpx.Client() as client:
+                response = client.get(
+                    self.BASE_URL,
+                    params=params,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json',
+                    },
+                    timeout=15
+                )
+                response.raise_for_status()
+
+                data = response.json()
             
             if data.get('code') != '00000':
                 print(f"⚠️ Bitget API error: {data.get('msg')}")

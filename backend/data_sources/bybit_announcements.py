@@ -3,7 +3,7 @@ Bybit Announcements API Client
 Direct HTTP calls to Bybit API
 Documentation: https://bybit-exchange.github.io/docs/v5/announcement
 """
-import requests
+import httpx
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import time
@@ -37,7 +37,7 @@ class BybitAnnouncementClient:
             List of announcement dictionaries
         """
         cache_key = f"{self.CACHE_KEY}_{locale}_{limit}"
-        
+
         # Try Redis cache first
         cached_data = cache_get(cache_key)
         if cached_data:
@@ -54,16 +54,17 @@ class BybitAnnouncementClient:
             'locale': locale,
             'limit': min(limit, 100)
         }
-        
+
         try:
-            response = requests.get(
-                self.BASE_URL,
-                params=params,
-                timeout=10
-            )
-            response.raise_for_status()
-            
-            data = response.json()
+            with httpx.Client() as client:
+                response = client.get(
+                    self.BASE_URL,
+                    params=params,
+                    timeout=10
+                )
+                response.raise_for_status()
+
+                data = response.json()
             
             if data.get('retCode') != 0:
                 print(f"⚠️ Bybit API error: {data.get('retMsg')}")

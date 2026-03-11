@@ -2,7 +2,7 @@
 Binance Announcements API Client
 Fetches real announcements from Binance internal API
 """
-import requests
+import httpx
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import re
@@ -106,19 +106,20 @@ class BinanceAnnouncementClient:
             'pageNo': 1,
             'pageSize': limit,
         }
-        
-        response = requests.get(
-            self.BASE_URL,
-            params=params,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json',
-            },
-            timeout=15
-        )
-        response.raise_for_status()
-        
-        data = response.json()
+
+        with httpx.Client() as client:
+            response = client.get(
+                self.BASE_URL,
+                params=params,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json',
+                },
+                timeout=15
+            )
+            response.raise_for_status()
+
+            data = response.json()
         return data.get('data', {})
     
     def _parse_article(self, article: Dict, category: str) -> Dict[str, Any]:

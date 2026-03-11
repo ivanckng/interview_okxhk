@@ -5,9 +5,7 @@ import {
 } from '../types/news';
 import {
   ExternalLink,
-  Flame,
-  Loader2,
-  RefreshCw
+  Loader2
 } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { api, formatRelativeTime } from '../services/api';
@@ -75,7 +73,6 @@ export const NewsPage = () => {
   const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory | 'all'>('all');
   const [selectedPriority] = useState<NewsPriority | 'all'>('all');
-  const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(true);
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
@@ -84,31 +81,18 @@ export const NewsPage = () => {
   const {
     data: cachedNews,
     loading: newsLoading,
-    refresh: refreshNews,
   } = useCachedAPI<ProcessedNews[]>({
     module: 'news',
     fetcher: async () => {
       const data = await api.getNews({ limit: 50 });
-      // 翻譯在 useEffect 中處理，避免依賴語言導致無限循環
       return data;
     },
     onDataUpdate: () => setLastUpdated(new Date()),
   });
 
-  const {
-    data: cachedTrending,
-  } = useCachedAPI<ProcessedNews[]>({
-    module: 'news',
-    ttl: 5 * 60, // 5 分鐘
-    fetcher: async () => {
-      return api.getTrendingNews(3);
-    },
-  });
-
   // 合併狀態
   const loading = newsLoading;
   const news = cachedNews || [];
-  const trending = cachedTrending || [];
 
   // 初始化時從緩存讀取 highlight
   useEffect(() => {
@@ -117,23 +101,6 @@ export const NewsPage = () => {
       setHighlight(cached);
     }
   }, []);
-
-  // Refresh news from backend
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await api.refreshNews();
-      // Wait a bit for processing then refresh cache
-      setTimeout(() => {
-        refreshNews();
-        cacheService.deleteCache('newsHighlight'); // Clear highlight cache too
-      }, 3000);
-    } catch (err) {
-      console.error('Failed to refresh:', err);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   // Fetch AI analysis of news data (every 10 minutes)
   useEffect(() => {
@@ -258,69 +225,18 @@ export const NewsPage = () => {
         </div>
       ) : null}
 
-      {/* Header */}
+      {/* Source Info */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-white">{language === 'zh' ? '热点新闻' : 'News Feed'}</h1>
-          <div className="flex items-center gap-2 mt-1 text-xs text-okx-text-muted">
+        <div className="flex items-center gap-2 text-xs text-okx-text-muted">
             <span>{language === 'zh' ? '来源: BWEnews' : 'Source: BWEnews'}</span>
-            <span>•</span>
-            <span>{language === 'zh' ? '自动刷新: 5分钟' : 'Auto-refresh: 5 min'}</span>
             {lastUpdated && (
               <>
                 <span>•</span>
                 <span>{language === 'zh' ? '更新于: ' : 'Updated: '}{formatRelativeTime(lastUpdated.toISOString())}</span>
               </>
             )}
-          </div>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-3 py-1.5 bg-okx-bg-secondary border border-okx-border rounded text-xs text-white hover:border-white/30 transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          Refresh
-        </button>
       </div>
-
-      {/* Trending */}
-      {trending.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Flame className="text-yellow-400" size={16} />
-            <span className="text-sm font-medium text-white">Trending</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {trending.map((news) => (
-              <div 
-                key={news.id}
-                className="bg-okx-bg-secondary border border-okx-border rounded-lg p-4 hover:border-okx-border-light transition-all cursor-pointer group"
-                onClick={() => news.source_url && window.open(news.source_url, '_blank')}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <span
-                    className="text-xs px-2 py-0.5 rounded"
-                    style={{
-                      backgroundColor: newsCategoryColors[news.category as NewsCategory] + '20',
-                      color: newsCategoryColors[news.category as NewsCategory]
-                    }}
-                  >
-                    {categoryLabelMap[news.category as NewsCategory]}
-                  </span>
-                  <span className="text-white text-xs font-mono">{news.hot_score}</span>
-                </div>
-                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-white/80 transition-colors">{cleanHtml(news.title)}</h3>
-                <div className="flex items-center gap-2 mt-2 text-xs text-okx-text-muted">
-                  <span>{news.source}</span>
-                  <span>•</span>
-                  <span>{formatRelativeTime(news.publish_time)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4 pb-4 border-b border-okx-border">
