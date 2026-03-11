@@ -1,7 +1,7 @@
 import { Sparkles, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface CopilotHighlightProps {
-  title: string;
+  title?: string;
   summary: string;
   trend: 'up' | 'down' | 'neutral';
   trendLabel: string;
@@ -21,9 +21,9 @@ export const CopilotHighlight = ({ title, summary, trend, trendLabel, keyPoints 
   const trendBorder = trendConfig[trend].border;
 
   return (
-    <div 
+    <div
       className="relative rounded-lg p-4 mb-6 overflow-hidden"
-      style={{ 
+      style={{
         boxShadow: '0 0 0 1px rgba(255,255,255,0.2), 0 0 20px rgba(255,255,255,0.08)',
         border: '1px solid rgba(255,255,255,0.15)',
         background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)'
@@ -35,7 +35,7 @@ export const CopilotHighlight = ({ title, summary, trend, trendLabel, keyPoints 
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
-            <h2 className="text-white font-semibold">{title}</h2>
+            {title && <h2 className="text-white font-semibold">{title}</h2>}
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${trendBg} ${trendColor} ${trendBorder}`}>
               <TrendIcon size={12} />
               {trendLabel}
@@ -44,7 +44,7 @@ export const CopilotHighlight = ({ title, summary, trend, trendLabel, keyPoints 
           <p className="text-okx-text-secondary text-sm mb-3">{summary}</p>
           <div className="flex flex-wrap gap-2">
             {keyPoints.map((point, idx) => (
-              <span 
+              <span
                 key={idx}
                 className="text-xs bg-okx-bg-secondary border border-okx-border text-okx-text-secondary px-2 py-1 rounded"
               >

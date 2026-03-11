@@ -207,37 +207,36 @@ Publish Time: {raw_news.publish_time}"""
         """Generate highlight summary for News page"""
         if not news_items:
             return HighlightSummary(
-                title="No Recent News",
-                summary="No news available at the moment.",
+                title="智能行业专家分析",
+                summary="暂无新闻数据",
                 trend=TrendDirection.NEUTRAL,
-                highlights=["Check back later for updates"]
+                highlights=["请稍后再查看更新"]
             )
-        
+
         # Prepare context from top news
         top_news = sorted(news_items, key=lambda x: x.hot_score, reverse=True)[:10]
         news_context = "\n".join([
             f"- [{n.priority.upper()}] {n.title} (Category: {n.category}, Score: {n.hot_score}, Sentiment: {n.sentiment})"
             for n in top_news
         ])
-        
-        system_prompt = """You are an OKX Business Operations Intelligence Agent. Generate an executive summary for OKX internal operations team based on recent crypto news.
 
-Your analysis should focus on OKX business concerns:
-- Regulatory developments requiring OKX compliance action
-- Competitor moves (Binance, ByBit, Coinbase) threatening OKX position
-- Institutional trends impacting OKX volume and revenue
-- Market events affecting OKX user activity and trading volumes
-- Security issues requiring OKX risk management
-- Product opportunities OKX should consider
+        system_prompt = """你是 OKX 高薪聘请的行业分析专家，请你根据行业新闻分析行业当前的现状和发展趋势，OKX 在当前行业发展阶段需要关注的地方。
 
-Return a JSON object with:
-- title: catchy 3-5 word title in ENGLISH
-- summary: 1-2 sentence overview in ENGLISH from OKX business perspective
-- trend: one of [bullish, bearish, mixed, neutral] for crypto markets
-- highlights: array of 3 key takeaways (1 sentence each) in ENGLISH on what OKX operations should focus on
+请返回 JSON 格式的中文分析，包含：
+- title: 标题，固定为"智能行业专家分析"
+- summary: 1-2 句话概述当前行业现状
+- trend: one of [bullish, bearish, mixed, neutral]
+- highlights: 3 个关键要点，每个 1-2 句话，说明 OKX 应该关注什么
 
-Respond ONLY with valid JSON in ENGLISH."""
+关注点：
+1. 监管政策变化对 OKX 合规的影响
+2. 竞争对手（Binance, ByBit, Coinbase）的动向
+3. 机构采用趋势对 OKX 交易量的影响
+4. 市场事件对 OKX 用户活跃度的影响
+5. 安全问题需要 OKX 风险管理
+6. OKX 应该考虑的产品机会
 
+请用中文回复。"""
         user_content = f"Recent News:\n{news_context}"
         
         messages = [
@@ -253,44 +252,50 @@ Respond ONLY with valid JSON in ENGLISH."""
                 if response.startswith("json"):
                     response = response[4:]
             response = response.strip()
-            
+
             result = json.loads(response)
-            
+
             return HighlightSummary(
-                title=result.get("title", "Market Update"),
-                summary=result.get("summary", "News analysis unavailable."),
+                title=result.get("title", "智能行业专家分析"),
+                summary=result.get("summary", "暂无新闻分析数据"),
                 trend=TrendDirection(result.get("trend", "neutral")),
                 highlights=result.get("highlights", [])
             )
         except Exception as e:
             print(f"⚠️ Failed to generate news highlight: {e}")
             return HighlightSummary(
-                title="Market Update",
-                summary=f"Analyzing {len(news_items)} recent news items.",
+                title="智能行业专家分析",
+                summary=f"正在分析 {len(news_items)} 条最新新闻...",
                 trend=TrendDirection.NEUTRAL,
-                highlights=["AI analysis temporarily unavailable"]
+                highlights=["AI 分析暂时不可用"]
             )
     
     async def generate_market_highlight(self, market_data: Dict[str, Any]) -> HighlightSummary:
         """Generate highlight for Markets page"""
-        system_prompt = """You are an OKX Macro Market Intelligence Agent. Generate a highlight summary for OKX traders based on macro market data.
+        system_prompt = """你是 OKX 雇佣的高级经济学家哦，你需要根据中美两大经济体的宏观经济数据，突发的时政新闻，主要市场的股指和大宗商品以及外汇分析宏观市场变化对于 OKX 运营的影响。
 
-Focus on: How macro trends (GDP, inflation, interest rates) impact crypto markets and OKX users.
+请返回 JSON 格式的中文分析，包含：title（标题）, summary（摘要）, trend（bullish/bearish/mixed/neutral）, highlights（3 个要点）。
 
-Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
-        
+标题固定为："智能经济学家分析"
+
+关注点：
+1. 中美 GDP、通胀率、利率等宏观数据如何影响加密货币市场
+2. 突发时政新闻对 OKX 运营的潜在影响
+3. 全球主要股市、大宗商品、外汇市场的联动效应
+4. 给 OKX 运营团队的具体建议"""
+
         user_content = f"Market Data: {json.dumps(market_data, default=str)}"
-        
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
         ]
-        
+
         try:
             response = await self._call_api(messages, temperature=0.4)
             result = json.loads(response.strip().replace("```json", "").replace("```", ""))
             return HighlightSummary(
-                title=result.get("title", "Market Overview"),
+                title=result.get("title", "智能经济学家分析"),
                 summary=result.get("summary", ""),
                 trend=TrendDirection(result.get("trend", "neutral")),
                 highlights=result.get("highlights", [])
@@ -298,10 +303,10 @@ Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutra
         except Exception as e:
             print(f"⚠️ Failed to generate market highlight: {e}")
             return HighlightSummary(
-                title="Market Overview",
-                summary="Macro data analysis in progress.",
+                title="智能经济学家分析",
+                summary="宏观经济数据分析中...",
                 trend=TrendDirection.NEUTRAL,
-                highlights=["Data loading..."]
+                highlights=["数据加载中..."]
             )
     
     async def generate_company_highlight(self, announcements: List[Dict]) -> HighlightSummary:

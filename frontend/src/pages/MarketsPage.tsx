@@ -59,7 +59,7 @@ const staticTranslations = {
     breakingNews: 'Breaking News',
     stockIndices: 'Stock Indices',
     lastUpdate: 'Last updated',
-    noData: 'No relevant market news available',
+    noData: 'No relevant macro news available',
     indicators: {
       gdpAnnual: 'GDP Annual',
       gdpQuarterly: 'GDP Quarterly',
@@ -78,7 +78,7 @@ const staticTranslations = {
     breakingNews: '突发新闻',
     stockIndices: '地区股指',
     lastUpdate: '最后更新',
-    noData: '暂无相关市场新闻',
+    noData: '暂无相关宏观新闻',
     indicators: {
       gdpAnnual: '年度 GDP',
       gdpQuarterly: '季度 GDP',
@@ -250,107 +250,176 @@ export const MarketsPage = () => {
   const [currenciesLoading, setCurrenciesLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // 初始化時從緩存讀取 highlight
+  // 初始化时从缓存读取所有可用数据
   useEffect(() => {
-    const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
-    if (cached) {
-      setHighlight(cached);
+    // 读取 AI 分析缓存
+    const cachedHighlight = cacheService.getCache<HighlightSummary>('marketHighlight');
+    if (cachedHighlight) {
+      setHighlight(cachedHighlight);
+      setAnalysisLoading(false);
       setLoading(false);
+    }
+
+    // 读取新闻缓存
+    const cachedNews = cacheService.getCache<any[]>('breakingNews');
+    if (cachedNews) {
+      setBreakingNews(cachedNews);
+      setNewsLoading(false);
     }
   }, []);
 
   const t = staticTranslations[language];
 
-  // Fetch AI analysis data (every 10 minutes)
+  // ==================== AI 分析 - 10 分钟定时 + 可见性刷新 ====================
   useEffect(() => {
-    const fetchAIAnalysis = async () => {
+    const fetchAIAnalysis = async (forceRefresh = false) => {
       setAnalysisLoading(true);
       try {
+        // 检查前端缓存 (10 分钟)，强制刷新时跳过
+        if (!forceRefresh) {
+          const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
+          const cachedAt = cacheService.getCacheTimestamp('marketHighlight');
+          const now = Date.now();
+          const isExpired = !cachedAt || (now - cachedAt) > 600000; // 10 分钟
+
+          if (cached && !isExpired) {
+            setHighlight(cached);
+            setAnalysisLoading(false);
+            setLoading(false);
+            console.log('[MarketsPage] Using cached AI analysis');
+            return;
+          }
+        }
+
+        // 从后端获取
         const response = await fetch(`http://localhost:8000/api/markets/analysis`);
         const data = await response.json();
+
+        console.log('[MarketsPage] AI Analysis response:', data);
 
         const aiAnalysis = data.ai_analysis;
         if (aiAnalysis && !aiAnalysis.error) {
           // Convert AI analysis to highlight format
           const highlightData = {
-            title: 'AI Market Analysis',
+            title: '智能经济学家分析',
             summary: aiAnalysis.market_pulse || 'Analyzing market data...',
             trend: aiAnalysis.overall_sentiment || 'neutral',
             highlights: aiAnalysis.key_insights?.slice(0, 3) || [],
             generated_at: new Date().toISOString(),
           };
 
+          console.log('[MarketsPage] Highlight data:', highlightData);
+
           // Translate if Chinese and save to cache
           if (language === 'zh' && highlightData.summary) {
-            const translated = await translateHighlightSummary(highlightData, 'zh');
-            cacheService.setCache('marketHighlight', translated);
-            setHighlight(translated);
+            try {
+              const translated = await translateHighlightSummary(highlightData, 'zh');
+              console.log('[MarketsPage] Translated highlight:', translated);
+              cacheService.setCache('marketHighlight', translated, 600); // 10 分钟
+              setHighlight(translated);
+            } catch (translateErr) {
+              console.error('[MarketsPage] Translation failed, using original:', translateErr);
+              cacheService.setCache('marketHighlight', highlightData, 600);
+              setHighlight(highlightData);
+            }
           } else {
-            cacheService.setCache('marketHighlight', highlightData);
+            cacheService.setCache('marketHighlight', highlightData, 600);
             setHighlight(highlightData);
           }
+        } else {
+          console.warn('[MarketsPage] No AI analysis or error in response:', aiAnalysis);
         }
       } catch (err) {
-        console.error('Failed to fetch AI analysis:', err);
+        console.error('[MarketsPage] Failed to fetch AI analysis:', err);
+        // 使用缓存数据作为 fallback
+        const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
+        if (cached) {
+          setHighlight(cached);
+        }
       } finally {
         setAnalysisLoading(false);
+        setLoading(false);
       }
     };
 
-    // Initial fetch
+    // 首次加载
     fetchAIAnalysis();
 
-    // Refresh every 10 minutes (600000 ms)
-    const interval = setInterval(fetchAIAnalysis, 600000);
+    // 定时刷新：每 10 分钟
+    const interval = setInterval(() => fetchAIAnalysis(false), 600000);
 
-    return () => clearInterval(interval);
+    // 页面可见性检测：切回标签页时刷新
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[MarketsPage] Page visible, refreshing AI analysis');
+        fetchAIAnalysis(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [language]);
 
-  // Fetch breaking news (with translation)
+  // ==================== 突发新闻 - 30 分钟缓存 + 可见性刷新 ====================
   useEffect(() => {
-    const fetchBreakingNews = async () => {
+    const fetchBreakingNews = async (forceRefresh = false) => {
+      // 检查前端缓存 (30 分钟)，强制刷新时跳过
+      if (!forceRefresh) {
+        const cached = cacheService.getCache<any[]>('breakingNews');
+        const cachedAt = cacheService.getCacheTimestamp('breakingNews');
+        const now = Date.now();
+        const isExpired = !cachedAt || (now - cachedAt) > 1800000; // 30 分钟
+
+        if (cached && !isExpired) {
+          setBreakingNews(cached);
+          setNewsLoading(false);
+          console.log('[MarketsPage] Using cached breaking news');
+          return;
+        }
+      }
+
       try {
         const response = await fetch(`http://localhost:8000/api/news/breaking`);
         const data = await response.json();
-        
+
         let articles = data.articles || [];
-        
+
         // Translate if Chinese
         if (language === 'zh' && articles.length > 0) {
           articles = await translateNewsArticles(articles, 'zh');
         }
-        
+
+        // Cache for 30 minutes
+        cacheService.setCache('breakingNews', articles, 1800);
         setBreakingNews(articles);
       } catch (err) {
         console.error('Failed to fetch breaking news:', err);
-      }
-    };
-    
-    fetchBreakingNews();
-  }, [language]);
-
-  // Fetch highlight data (fallback)
-  useEffect(() => {
-    const fetchHighlight = async () => {
-      try {
-        const globalData = await api.getMarketData();
-        if (globalData.highlight && !highlight) {
-          // 如果是中文，翻译 highlight
-          if (language === 'zh') {
-            const translatedHighlight = await translateHighlightSummary(globalData.highlight, 'zh');
-            setHighlight(translatedHighlight);
-          } else {
-            setHighlight(globalData.highlight);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch market highlight:', err);
       } finally {
-        setLoading(false);
+        setNewsLoading(false);
       }
     };
-    fetchHighlight();
-  }, [language, highlight]);
+
+    // 首次加载
+    fetchBreakingNews();
+
+    // 页面可见性检测：切回标签页时刷新
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[MarketsPage] Page visible, refreshing news');
+        fetchBreakingNews(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [language]);
 
   // Fetch economy indicators
   useEffect(() => {
@@ -380,16 +449,29 @@ export const MarketsPage = () => {
     fetchEconomyData();
   }, []);
 
-  // Fetch stock indices (refresh every 1 minute, with translation)
+  // ==================== 股指 - 1 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchIndices = async () => {
+      // 检查前端缓存 (5 分钟)
+      const cached = cacheService.getCache<Record<string, any[]>>('stockIndices');
+      const cachedAt = cacheService.getCacheTimestamp('stockIndices');
+      const now = Date.now();
+      const isExpired = !cachedAt || (now - cachedAt) > 300000; // 5 分钟
+
+      if (cached && !isExpired) {
+        setStockIndices(cached);
+        setIndicesLoading(false);
+        console.log('[MarketsPage] Using cached stock indices');
+        return;
+      }
+
       setIndicesLoading(true);
       try {
         const response = await fetch(`http://localhost:8000/api/market/indices`);
         const data = await response.json();
 
         let regions = data.regions || {};
-        
+
         // Translate if Chinese
         if (language === 'zh') {
           const translatedRegions: Record<string, any[]> = {};
@@ -399,6 +481,8 @@ export const MarketsPage = () => {
           regions = translatedRegions;
         }
 
+        // Cache for 5 minutes
+        cacheService.setCache('stockIndices', regions, 300);
         setStockIndices(regions);
       } catch (err) {
         console.error('Failed to fetch stock indices:', err);
@@ -409,7 +493,6 @@ export const MarketsPage = () => {
       }
     };
 
-    // Initial fetch
     fetchIndices();
 
     // Refresh every 1 minute (60000 ms)
@@ -418,21 +501,36 @@ export const MarketsPage = () => {
     return () => clearInterval(interval);
   }, [language]);
 
-  // Fetch commodities (refresh every 1 minute, with translation)
+  // ==================== 大宗商品 - 1 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchCommodities = async () => {
+      // 检查前端缓存 (5 分钟)
+      const cached = cacheService.getCache<any[]>('commodities');
+      const cachedAt = cacheService.getCacheTimestamp('commodities');
+      const now = Date.now();
+      const isExpired = !cachedAt || (now - cachedAt) > 300000; // 5 分钟
+
+      if (cached && !isExpired) {
+        setCommodities(cached);
+        setCommoditiesLoading(false);
+        console.log('[MarketsPage] Using cached commodities');
+        return;
+      }
+
       setCommoditiesLoading(true);
       try {
         const response = await fetch(`http://localhost:8000/api/market/commodities`);
         const data = await response.json();
-        
+
         let commodities = data.commodities || [];
-        
+
         // Translate if Chinese
         if (language === 'zh' && commodities.length > 0) {
           commodities = await translateCommodities(commodities, 'zh');
         }
-        
+
+        // Cache for 5 minutes
+        cacheService.setCache('commodities', commodities, 300);
         setCommodities(commodities);
       } catch (err) {
         console.error('Failed to fetch commodities:', err);
@@ -440,31 +538,45 @@ export const MarketsPage = () => {
         setCommoditiesLoading(false);
       }
     };
-    
-    // Initial fetch
+
     fetchCommodities();
-    
+
     // Refresh every 1 minute (60000 ms)
     const interval = setInterval(fetchCommodities, 60000);
-    
+
     return () => clearInterval(interval);
   }, [language]);
 
-  // Fetch currency rates (refresh every 1 minute, with translation)
+  // ==================== 外汇汇率 - 1 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchCurrencies = async () => {
+      // 检查前端缓存 (5 分钟)
+      const cached = cacheService.getCache<any[]>('currencies');
+      const cachedAt = cacheService.getCacheTimestamp('currencies');
+      const now = Date.now();
+      const isExpired = !cachedAt || (now - cachedAt) > 300000; // 5 分钟
+
+      if (cached && !isExpired) {
+        setCurrencies(cached);
+        setCurrenciesLoading(false);
+        console.log('[MarketsPage] Using cached currency rates');
+        return;
+      }
+
       setCurrenciesLoading(true);
       try {
         const response = await fetch(`http://localhost:8000/api/market/currency`);
         const data = await response.json();
-        
+
         let currencies = data.currencies || [];
-        
+
         // Translate if Chinese
         if (language === 'zh' && currencies.length > 0) {
           currencies = await translateCurrencyRates(currencies, 'zh');
         }
-        
+
+        // Cache for 5 minutes
+        cacheService.setCache('currencies', currencies, 300);
         setCurrencies(currencies);
       } catch (err) {
         console.error('Failed to fetch currency rates:', err);
@@ -472,55 +584,14 @@ export const MarketsPage = () => {
         setCurrenciesLoading(false);
       }
     };
-    
-    // Initial fetch
+
     fetchCurrencies();
-    
+
     // Refresh every 1 minute (60000 ms)
     const interval = setInterval(fetchCurrencies, 60000);
-    
+
     return () => clearInterval(interval);
   }, [language]);
-
-  // Fetch real breaking news from API
-  useEffect(() => {
-    const fetchNews = async () => {
-      setNewsLoading(true);
-      try {
-        const response = await fetch(`http://localhost:8000/api/news/breaking`);
-        if (response.ok) {
-          const data = await response.json();
-
-          // Transform API data to our format
-          const transformedNews = (data.articles || []).map((article: any) => ({
-            id: article.id,
-            title: article.title,
-            source: article.source,
-            time: article.time,
-            impact: article.impact,
-            region: article.region,
-            category: article.category,
-            link: article.link,
-            crypto_impact_rank: article.crypto_impact_rank,
-          }));
-
-          // Use real API data only (no mock fallback)
-          setBreakingNews(transformedNews);
-          setLastUpdated(new Date());
-        } else {
-          // Empty array if API fails
-          setBreakingNews([]);
-        }
-      } catch (err) {
-        console.error('Failed to fetch news:', err);
-        // Empty array on error
-        setBreakingNews([]);
-      } finally {
-        setNewsLoading(false);
-      }
-    };
-    fetchNews();
-  }, []);
 
   if (loading || newsLoading || economyLoading || indicesLoading || commoditiesLoading || currenciesLoading) {
     return (
@@ -545,10 +616,6 @@ export const MarketsPage = () => {
     <div className="space-y-6">
       {/* Module 1: AI Market Summary */}
       <section>
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={18} className="text-white" />
-          <h2 className="text-white font-medium text-sm">{t.aiSummary}</h2>
-        </div>
         {highlight ? (
           <CopilotHighlight
             title={highlight.title}
@@ -565,13 +632,12 @@ export const MarketsPage = () => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-xl font-semibold text-white">AI Market Analysis</h1>
                   <span className="text-okx-text-muted text-xs">
-                    {language === 'zh' ? '分析进行中...' : 'Analysis in progress...'}
+                    {language === 'zh' ? '智能经济学家分析中...' : 'Smart Economist Analyzing...'}
                   </span>
                 </div>
                 <p className="text-okx-text-secondary text-sm">
-                  {language === 'zh' ? '正在分析市场数据...' : 'Analyzing market data...'}
+                  {language === 'zh' ? '正在分析宏观经济数据，请稍候...' : 'Analyzing macroeconomic data, please wait...'}
                 </p>
               </div>
             </div>

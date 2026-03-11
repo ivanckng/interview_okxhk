@@ -27,7 +27,10 @@ class GNewsClient:
         return f"gnews_{category}"
 
     def _should_refresh_cache(self, cached_data: Any) -> bool:
-        """Refresh every 30 minutes"""
+        """
+        Check if cache should be refreshed
+        Refresh every 30 minutes (to stay within 100 requests/day limit)
+        """
         if not cached_data:
             return True
         cached_at = cached_data.get("cached_at")
@@ -40,14 +43,14 @@ class GNewsClient:
         except:
             return True
 
-    async def get_breaking_news(self, category: str = "world", lang: str = "zh", country: str = "cn", max_results: int = 10) -> Dict[str, Any]:
+    async def get_breaking_news(self, category: str = "general", lang: str = "en", country: str = "us", max_results: int = 10) -> Dict[str, Any]:
         """
         Get breaking news from GNews API
 
         Args:
-            category: News category (world, business, technology, etc.)
-            lang: Language code (zh, en, etc.)
-            country: Country code (cn, us, etc.)
+            category: News category (general, business, technology, etc.)
+            lang: Language code (en, zh, etc.)
+            country: Country code (us, cn, etc.)
             max_results: Maximum number of articles to return
 
         Returns:
@@ -65,7 +68,7 @@ class GNewsClient:
             return {"error": "No API key", "articles": []}
 
         try:
-            # Build API URL
+            # Build API URL - use simpler parameters for better compatibility
             url = f"{self.BASE_URL}?category={category}&lang={lang}&country={country}&max={max_results}&apikey={self.api_key}"
 
             async with httpx.AsyncClient() as client:

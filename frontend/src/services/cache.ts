@@ -34,8 +34,12 @@ export interface ModuleConfig {
 export const MODULE_CONFIGS: Record<string, ModuleConfig> = {
   news: { key: 'news', ttl: 30 * 60 },        // 30 分鐘
   newsHighlight: { key: 'news_highlight', ttl: 60 * 60 }, // 1 小時
+  breakingNews: { key: 'breaking_news', ttl: 30 * 60 },   // 30 分鐘 (GNews 配額限制)
   market: { key: 'market', ttl: 10 * 60 },    // 10 分鐘
   marketHighlight: { key: 'market_highlight', ttl: 30 * 60 }, // 30 分鐘
+  stockIndices: { key: 'stock_indices', ttl: 1 * 60 },     // 1 分鐘 (股價波動快)
+  commodities: { key: 'commodities', ttl: 1 * 60 },        // 1 分鐘
+  currencies: { key: 'currencies', ttl: 1 * 60 },          // 1 分鐘
   crypto: { key: 'crypto', ttl: 1 * 60 },     // 1 分鐘 (價格波動快)
   cryptoHighlight: { key: 'crypto_highlight', ttl: 30 * 60 }, // 30 分鐘
   company: { key: 'company', ttl: 15 * 60 },  // 15 分鐘
@@ -84,6 +88,26 @@ function shouldTriggerDailyRefresh(): boolean {
  */
 function updateLastRefreshTime(): void {
   localStorage.setItem(getStorageKey(LAST_REFRESH_KEY), Date.now().toString());
+}
+
+/**
+ * 获取缓存的时间戳
+ */
+export function getCacheTimestamp(module: string): number | null {
+  const config = MODULE_CONFIGS[module];
+  if (!config) return null;
+
+  try {
+    const key = getStorageKey(config.key);
+    const stored = localStorage.getItem(key);
+
+    if (!stored) return null;
+
+    const entry: CacheEntry<any> = JSON.parse(stored);
+    return entry.timestamp;
+  } catch (error) {
+    return null;
+  }
 }
 
 /**

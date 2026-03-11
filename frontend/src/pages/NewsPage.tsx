@@ -81,6 +81,7 @@ export const NewsPage = () => {
   const {
     data: cachedNews,
     loading: newsLoading,
+    refresh: refreshNews,
   } = useCachedAPI<ProcessedNews[]>({
     module: 'news',
     fetcher: async () => {
@@ -94,6 +95,17 @@ export const NewsPage = () => {
   const loading = newsLoading;
   const news = cachedNews || [];
 
+  // ==================== 新闻数据 - 每 5 分钟自动刷新 ====================
+  useEffect(() => {
+    // 首次加载后，设置定时刷新
+    const interval = setInterval(() => {
+      console.log('[NewsPage] Auto-refreshing news data...');
+      refreshNews();
+    }, 300000); // 5 分钟
+
+    return () => clearInterval(interval);
+  }, [refreshNews]);
+
   // 初始化時從緩存讀取 highlight
   useEffect(() => {
     const cached = cacheService.getCache<HighlightSummary>('newsHighlight');
@@ -102,7 +114,7 @@ export const NewsPage = () => {
     }
   }, []);
 
-  // Fetch AI analysis of news data (every 10 minutes)
+  // ==================== AI 分析 - 10 分钟定时刷新 + 可见性刷新 ====================
   useEffect(() => {
     const fetchAIAnalysis = async () => {
       // 使用 cachedNews 而不是 news
@@ -111,7 +123,7 @@ export const NewsPage = () => {
       setAnalysisLoading(true);
       try {
         console.log('[News AI] Fetching analysis with', cachedNews.length, 'news items, language:', language);
-        
+
         const response = await fetch('http://localhost:8000/api/news/analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -121,11 +133,11 @@ export const NewsPage = () => {
 
         const aiAnalysis = data.ai_analysis;
         console.log('[News AI] Raw AI analysis:', aiAnalysis?.market_pulse?.substring(0, 50) + '...');
-        
+
         if (aiAnalysis && !aiAnalysis.error) {
           // Convert AI analysis to highlight format
           const highlightData = {
-            title: aiAnalysis.market_pulse ? 'AI News Analysis' : 'News Summary',
+            title: '智能行业专家分析',
             summary: aiAnalysis.market_pulse || 'Analyzing news data...',
             trend: aiAnalysis.overall_sentiment || 'neutral',
             highlights: aiAnalysis.action_items?.slice(0, 3) || aiAnalysis.key_insights?.slice(0, 3) || [],
@@ -138,26 +150,45 @@ export const NewsPage = () => {
             const translated = await translateHighlightSummary(highlightData, 'zh');
             console.log('[News AI] Translated summary:', translated.summary?.substring(0, 50) + '...');
             // Save to cache and update state
-            cacheService.setCache('newsHighlight', translated);
+            cacheService.setCache('newsHighlight', translated, 600); // 10 分钟
             setHighlight(translated);
           } else {
-            cacheService.setCache('newsHighlight', highlightData);
+            cacheService.setCache('newsHighlight', highlightData, 600);
             setHighlight(highlightData);
           }
         }
       } catch (err) {
         console.error('Failed to fetch AI news analysis:', err);
+        // 使用缓存作为 fallback
+        const cached = cacheService.getCache<HighlightSummary>('newsHighlight');
+        if (cached) {
+          setHighlight(cached);
+        }
       } finally {
         setAnalysisLoading(false);
       }
     };
 
-    // Initial fetch
+    // 首次加载
     fetchAIAnalysis();
 
-    // Refresh every 10 minutes (600000 ms)
+    // 定时刷新：每 10 分钟
     const interval = setInterval(fetchAIAnalysis, 600000);
-    return () => clearInterval(interval);
+
+    // 页面可见性检测：切回标签页时刷新
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[NewsPage] Page visible, refreshing AI analysis');
+        fetchAIAnalysis();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [cachedNews, language]);
 
   // 类别标签中英文映射
@@ -212,13 +243,12 @@ export const NewsPage = () => {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-xl font-semibold text-white">AI News Analysis</h1>
                 <span className="text-okx-text-muted text-xs">
-                  {language === 'zh' ? '分析进行中...' : 'Analysis in progress...'}
+                  {language === 'zh' ? '智能行业专家分析中...' : 'Smart Industry Expert Analyzing...'}
                 </span>
               </div>
               <p className="text-okx-text-secondary text-sm">
-                {language === 'zh' ? '正在分析热点新闻数据...' : 'Analyzing news data...'}
+                {language === 'zh' ? '正在分析行业新闻数据，请稍候...' : 'Analyzing industry news, please wait...'}
               </p>
             </div>
           </div>

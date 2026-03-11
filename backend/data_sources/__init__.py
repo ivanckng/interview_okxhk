@@ -1,31 +1,46 @@
 """
 Data Sources Module
-Provides unified access to various financial and economic data sources
 """
 
 from .bwenews import get_bwenews_client, BWEnewsClient
-from .market_data import get_market_data_client, MarketDataClient
 from .crypto_prices import get_crypto_price_client, CryptoPriceClient
-from .world_bank import get_world_bank_client, WorldBankClient
-from .trading_economics import get_trading_economics_client, TradingEconomicsClient
 from .comprehensive_market import get_comprehensive_market_client, ComprehensiveMarketDataClient
+from .gnews import get_gnews_client, GNewsClient
+from .fred import get_fred_client, FredClient
+from .tushare import get_tushare_client, TushareClient
+from .yfinance_data import get_yahoo_finance_client, YahooFinanceClient
+from .bybit_announcements import get_bybit_client, BybitAnnouncementClient
+from .binance_announcements import get_binance_client, BinanceAnnouncementClient
+from .bitget_announcements import get_bitget_client, BitgetAnnouncementClient
 
 __all__ = [
     # News
     'get_bwenews_client',
     'BWEnewsClient',
-    
-    # Market Data
-    'get_market_data_client',
-    'MarketDataClient',
-    'get_world_bank_client',
-    'WorldBankClient',
-    'get_trading_economics_client',
-    'TradingEconomicsClient',
+    'get_gnews_client',
+    'GNewsClient',
+
+    # Economic Data
+    'get_fred_client',
+    'FredClient',
+    'get_tushare_client',
+    'TushareClient',
+
+    # Market Data (Yahoo Finance)
+    'get_yahoo_finance_client',
+    'YahooFinanceClient',
     'get_comprehensive_market_client',
     'ComprehensiveMarketDataClient',
-    
+
     # Crypto
     'get_crypto_price_client',
     'CryptoPriceClient',
+
+    # Exchange Announcements
+    'get_bybit_client',
+    'BybitAnnouncementClient',
+    'get_binance_client',
+    'BinanceAnnouncementClient',
+    'get_bitget_client',
+    'BitgetAnnouncementClient',
 ]

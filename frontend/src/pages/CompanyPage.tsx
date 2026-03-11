@@ -455,7 +455,6 @@ export const CompanyPage = () => {
       {/* Copilot Highlight */}
       {analyzingAI ? (
         <CopilotHighlight
-          title={language === 'zh' ? 'AI 竞对分析' : 'AI Competitor Analysis'}
           summary={language === 'zh' ? '正在分析竞对动态...' : 'Analyzing competitor data...'}
           trend="neutral"
           trendLabel={language === 'zh' ? '分析中' : 'Analyzing'}
@@ -463,7 +462,10 @@ export const CompanyPage = () => {
         />
       ) : (
         <CopilotHighlight
-          {...(highlight || fallbackHighlight)}
+          summary={(highlight || fallbackHighlight).summary}
+          trend={(highlight || fallbackHighlight).trend}
+          trendLabel={(highlight || fallbackHighlight).trendLabel}
+          keyPoints={(highlight || fallbackHighlight).keyPoints}
         />
       )}
 

@@ -38,10 +38,8 @@ from utils.scheduler import init_scheduler, get_scheduler
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
-from data_sources.market_data import get_market_data_client
 from data_sources.crypto_prices import get_crypto_price_client
 from data_sources.comprehensive_market import get_comprehensive_market_client
-from data_sources.trading_economics import get_trading_economics_client
 from data_sources.gnews import get_gnews_client
 from data_sources.fred import get_fred_client
 from data_sources.tushare import get_tushare_client
@@ -600,57 +598,55 @@ You have access to the following REAL-TIME data from the OKX Crypto Pulse dashbo
 async def get_market_data():
     """
     Get comprehensive global macro market data
-    
-    Data Source: Alpha Vantage (https://www.alphavantage.co)
-    
+
     Economic Data:
-    - Source: Federal Reserve Economic Data (FRED), Bureau of Economic Analysis (BEA), Bureau of Labor Statistics (BLS)
+    - US: FRED (Federal Reserve Economic Data)
+    - China: Tushare
+    - Others: Fallback data
     - Cache: 24 hours
-    - Update frequency: Daily
-    
-    Financial Data (Stock Indices):
-    - Source: Alpha Vantage Global Quote API
-    - Cache: 10 minutes
-    - Update frequency: Every 10 minutes
+
+    Financial Data (Stock Indices, Commodities, Currency):
+    - Source: Yahoo Finance
+    - Cache: 1 minute
+    - Update frequency: Every 1 minute
     """
     cache = get_market_cache()
     cached = cache.get("comprehensive_market_data")
-    
+
     if cached:
         return cached
-    
+
     # Fetch comprehensive global data
     client = get_comprehensive_market_client()
     data = await client.get_global_summary()
-    
+
     # Generate highlights
     agent = get_deepseek_agent()
     highlight = await agent.generate_market_highlight(data)
-    
+
     result = {
         "data": data,
         "highlight": highlight.model_dump(),
-        "sources": ["Alpha Vantage - https://www.alphavantage.co"],
+        "sources": ["FRED", "Tushare", "Yahoo Finance"],
         "data_details": {
             "economic_data": {
-                "source": "Federal Reserve Economic Data (FRED), Bureau of Economic Analysis (BEA), Bureau of Labor Statistics (BLS)",
+                "source": "FRED (US), Tushare (CN), Fallback (Others)",
                 "cache_ttl": "24 hours",
                 "update_frequency": "Daily"
             },
             "financial_data": {
-                "source": "Alpha Vantage Global Quote API",
-                "cache_ttl": "10 minutes",
-                "update_frequency": "Every 10 minutes"
+                "source": "Yahoo Finance (https://finance.yahoo.com/)",
+                "cache_ttl": "1 minute",
+                "update_frequency": "Every 1 minute"
             }
         },
-        # API Key 不在前端暴露
         "coverage": f"{data['coverage']['total_countries']} countries",
         "last_updated": data['timestamp']
     }
-    
-    # Cache for 10 minutes (matches financial data frequency)
-    cache.set("comprehensive_market_data", result, ttl=600)
-    
+
+    # Cache for 1 minute (matches financial data frequency)
+    cache.set("comprehensive_market_data", result, ttl=60)
+
     return result
 
 
@@ -663,7 +659,7 @@ async def get_market_countries():
     return {
         "countries": list(client.COUNTRY_CONFIG.keys()),
         "total": len(client.COUNTRY_CONFIG),
-        "sources": ["World Bank", "FRED", "OECD", "Trading Economics"]
+        "sources": ["FRED", "Tushare", "Yahoo Finance"]
     }
 
 
@@ -671,25 +667,30 @@ async def get_market_countries():
 async def get_country_market_data(country_id: str):
     """
     Get detailed market data for specific country
+
+    Economic Data Source:
+    - US: FRED (Federal Reserve Economic Data)
+    - CN: Tushare
+    - Others: Fallback data
     
-    Data Source: Alpha Vantage (https://www.alphavantage.co)
+    Financial Data Source: Yahoo Finance
     
     Economic Data Cache: 24 hours
-    Financial Data Cache: 10 minutes
+    Financial Data Cache: 1 minute
     """
     cache = get_market_cache()
     cache_key = f"country_data_{country_id}"
     cached = cache.get(cache_key)
-    
+
     if cached:
         return cached
-    
+
     client = get_comprehensive_market_client()
     data = await client.get_country_data(country_id)
-    
-    # Cache for 10 minutes (matches financial data update frequency)
-    cache.set(cache_key, data, ttl=600)
-    
+
+    # Cache for 1 minute (matches financial data update frequency)
+    cache.set(cache_key, data, ttl=60)
+
     return data
 
 
@@ -1199,48 +1200,9 @@ async def translate_text(request: TranslateRequest):
             translated_text = data.get("translations", [{}])[0].get("text", request.text)
             
             return {"translated_text": translated_text}
-            
+
     except httpx.RequestError as e:
         raise HTTPException(status_code=503, detail=f"Translation service unavailable: {str(e)}")
-
-
-@app.get("/api/market/trading-economics/{country_id}")
-async def get_trading_economics_indicators(country_id: str):
-    """
-    Get 5 key economic indicators from Trading Economics:
-    - GDP Annual Growth Rate
-    - GDP Quarterly Growth Rate
-    - Inflation Rate (CPI)
-    - Producer Prices (PPI)
-    - Unemployment Rate
-    
-    Data refreshes daily at 8:00 AM HKT
-    """
-    # Run sync function in thread pool
-    import asyncio
-    loop = asyncio.get_event_loop()
-    te_client = get_trading_economics_client()
-    data = await loop.run_in_executor(None, te_client.get_country_indicators, country_id)
-    
-    if "error" in data:
-        raise HTTPException(status_code=503, detail=data["error"])
-    
-    return data
-
-
-@app.get("/api/market/trading-economics")
-async def get_all_trading_economics_indicators():
-    """
-    Get trading economics indicators for all supported countries
-    """
-    import asyncio
-    loop = asyncio.get_event_loop()
-    te_client = get_trading_economics_client()
-    countries = list(te_client.COUNTRIES.keys())[:8]  # Limit to first 8 countries
-    
-    data = await loop.run_in_executor(None, te_client.get_multi_country_indicators, countries)
-    
-    return {"countries": data, "timestamp": datetime.utcnow().isoformat()}
 
 
 @app.get("/api/news/breaking")
@@ -1248,9 +1210,22 @@ async def get_breaking_news():
     """
     Get breaking news from GNews.io
     World news in Chinese
+    
+    Fallback: Returns empty array if API is unavailable
     """
     gnews = get_gnews_client()
     result = await gnews.get_breaking_news(category="world", lang="zh", country="cn", max_results=10)
+    
+    # If API fails, return empty articles with status
+    if result.get("status") == "error" or not result.get("articles"):
+        print("⚠️ GNews API unavailable, returning empty articles")
+        return {
+            "status": "unavailable",
+            "message": "News service temporarily unavailable",
+            "articles": [],
+            "source": "GNews.io"
+        }
+    
     return result
 
 

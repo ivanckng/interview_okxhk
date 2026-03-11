@@ -16,7 +16,7 @@ export const Layout = () => {
   // 导航栏标签（固定简体中文）
   const navLabels = {
     pulse: '市场脉搏',
-    news: '热点新闻',
+    news: '行业新闻',
     markets: '宏观市场',
     company: '竞对动向',
     crypto: '加密货币',

@@ -212,7 +212,6 @@ export const CryptoPage = () => {
       {/* Copilot Highlight - AI Generated */}
       {highlight ? (
         <CopilotHighlight
-          title={highlight.title}
           summary={highlight.summary}
           trend={highlight.trend === 'bullish' ? 'up' : highlight.trend === 'bearish' ? 'down' : 'neutral'}
           trendLabel={highlight.trend === 'bullish' ? 'Bullish' : highlight.trend === 'bearish' ? 'Bearish' : 'Mixed'}
@@ -226,7 +225,6 @@ export const CryptoPage = () => {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-xl font-semibold text-white">{t.aiAnalysis}</h1>
                 <span className="text-okx-text-muted text-xs">
                   {t.analyzing}
                 </span>
