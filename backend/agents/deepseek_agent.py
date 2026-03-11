@@ -342,16 +342,73 @@ Return JSON in ENGLISH with: title, summary, trend (active/neutral), highlights 
                 highlights=["Loading exchange data..."]
             )
     
-    async def generate_crypto_highlight(self, price_data: List[Dict]) -> HighlightSummary:
+    async def generate_crypto_highlight(self, price_data: List[Dict], global_data: Optional[Dict] = None) -> HighlightSummary:
         """Generate highlight for Crypto page"""
-        system_prompt = """You are an OKX Crypto Market Analyst. Analyze cryptocurrency price movements for OKX traders.
 
-Focus on: Major movers, trading opportunities, support/resistance levels relevant to OKX listed tokens.
+        # 准备全局数据上下文
+        global_context = ""
+        if global_data:
+            total_market_cap = global_data.get("total_market_cap")
+            total_volume = global_data.get("total_volume")
+            market_cap_pct = global_data.get("market_cap_percentage", {})
+            mcap_change_24h = global_data.get("market_cap_change_24h")
+            btc_dominance = market_cap_pct.get("btc", 0) if isinstance(market_cap_pct, dict) else 0
+            eth_dominance = market_cap_pct.get("eth", 0) if isinstance(market_cap_pct, dict) else 0
+            btc_dom_change = global_data.get("btc_dominance_change_24h")
+            eth_dom_change = global_data.get("eth_dominance_change_24h")
 
-Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutral), highlights (3 items)."""
+            # 格式化数据，处理 None 值
+            mcap_str = f"${total_market_cap / 1e12:.2f}T" if total_market_cap else "N/A"
+            vol_str = f"${total_volume / 1e9:.2f}B" if total_volume else "N/A"
+            btc_str = f"{btc_dominance}%" if btc_dominance else "N/A"
+            eth_str = f"{eth_dominance}%" if eth_dominance else "N/A"
+            
+            # 格式化涨跌幅
+            mcap_change_str = ""
+            vol_change_str = ""
+            btc_change_str = ""
+            eth_change_str = ""
+            
+            if mcap_change_24h is not None:
+                sign = "+" if mcap_change_24h > 0 else ""
+                mcap_change_str = f" ({sign}{mcap_change_24h:.2f}%)"
+            if global_data.get("total_volume_change_24h"):
+                vol_change = global_data.get("total_volume_change_24h")
+                sign = "+" if vol_change > 0 else ""
+                vol_change_str = f" ({sign}{vol_change:.2f}%)"
+            if btc_dom_change is not None:
+                sign = "+" if btc_dom_change > 0 else ""
+                btc_change_str = f" ({sign}{btc_dom_change:.2f}%)"
+            if eth_dom_change is not None:
+                sign = "+" if eth_dom_change > 0 else ""
+                eth_change_str = f" ({sign}{eth_dom_change:.2f}%)"
+
+            global_context = f"""
+
+全球市场数据：
+- 总市值：{mcap_str}{mcap_change_str}
+- 24h 交易量：{vol_str}{vol_change_str}
+- BTC 主导率：{btc_str}{btc_change_str}
+- ETH 主导率：{eth_str}{eth_change_str}
+"""
+            print(f"[Crypto Highlight] Global data: mcap={mcap_str}{mcap_change_str}, vol={vol_str}{vol_change_str}, btc_dom={btc_str}{btc_change_str}, eth_dom={eth_str}{eth_change_str}")
+        else:
+            print("[Crypto Highlight] No global data provided")
         
-        user_content = f"Price Data: {json.dumps(price_data, default=str)[:2000]}"
-        
+        system_prompt = """你是 OKX 雇佣的 Crypto 市场分析师，为 OKX 交易用户分析加密货币价格走势。
+
+关注点：主要币种价格波动、交易机会、支撑/阻力位，与 OKX 上市代币相关的市场动态。
+
+请返回 JSON 格式的中文分析，包含：
+- title: 标题，固定为"智能 Crypto 专家分析"
+- summary: 1-2 句话概述当前加密货币市场现状
+- trend: one of [bullish, bearish, mixed, neutral]
+- highlights: 3 个关键要点，每个 1-2 句话
+
+请用中文回复。"""
+
+        user_content = f"Price Data: {json.dumps(price_data, default=str)[:2000]}{global_context}"
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -361,7 +418,7 @@ Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutra
             response = await self._call_api(messages, temperature=0.4)
             result = json.loads(response.strip().replace("```json", "").replace("```", ""))
             return HighlightSummary(
-                title=result.get("title", "Crypto Market"),
+                title=result.get("title", "智能 Crypto 专家分析"),
                 summary=result.get("summary", ""),
                 trend=TrendDirection(result.get("trend", "neutral")),
                 highlights=result.get("highlights", [])
@@ -369,10 +426,10 @@ Return JSON in ENGLISH with: title, summary, trend (bullish/bearish/mixed/neutra
         except Exception as e:
             print(f"⚠️ Failed to generate crypto highlight: {e}")
             return HighlightSummary(
-                title="Crypto Market",
-                summary="Tracking cryptocurrency prices.",
+                title="智能 Crypto 专家分析",
+                summary="正在分析加密货币市场价格数据...",
                 trend=TrendDirection.NEUTRAL,
-                highlights=["Price data loading..."]
+                highlights=["AI 分析加载中，请稍候..."]
             )
 
 

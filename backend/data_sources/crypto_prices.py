@@ -116,11 +116,23 @@ class CryptoPriceClient:
                 response.raise_for_status()
                 data = response.json()
                 
+                # 获取 BTC 和 ETH 的 24h 涨跌幅
+                btc_change_24h = data["data"].get("market_cap_change_percentage_24h_btc")
+                eth_change_24h = data["data"].get("market_cap_change_percentage_24h_eth")
+                
+                # 计算交易量 24h 涨跌幅（如果 API 返回）
+                total_volume_change_24h = None
+                if data["data"].get("total_volume") and data["data"].get("total_volume").get("usd_24h_change"):
+                    total_volume_change_24h = data["data"]["total_volume"]["usd_24h_change"]
+
                 return {
                     "total_market_cap": data["data"]["total_market_cap"]["usd"],
                     "total_volume": data["data"]["total_volume"]["usd"],
                     "market_cap_percentage": data["data"]["market_cap_percentage"],
                     "market_cap_change_24h": data["data"]["market_cap_change_percentage_24h_usd"],
+                    "total_volume_change_24h": total_volume_change_24h,
+                    "btc_dominance_change_24h": btc_change_24h,
+                    "eth_dominance_change_24h": eth_change_24h,
                     "active_cryptocurrencies": data["data"]["active_cryptocurrencies"],
                     "timestamp": datetime.utcnow().isoformat()
                 }
@@ -130,7 +142,11 @@ class CryptoPriceClient:
             return {
                 "total_market_cap": 2800000000000,
                 "total_volume": 85000000000,
+                "market_cap_percentage": {"btc": 54.2, "eth": 17.8},
                 "market_cap_change_24h": 2.5,
+                "total_volume_change_24h": 3.2,
+                "btc_dominance_change_24h": 0.3,
+                "eth_dominance_change_24h": -0.2,
                 "note": "Fallback data - API error"
             }
     

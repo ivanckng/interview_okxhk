@@ -9,6 +9,15 @@ export const suggestedQuestions: SuggestedQuestion[] = [
   { id: '6', text: "Latest regulatory news?", category: 'news' },
 ];
 
+export const suggestedQuestionsZh: SuggestedQuestion[] = [
+  { id: '1', text: "比特币当前价格是多少？", category: 'price' },
+  { id: '2', text: "显示今日热门新闻", category: 'news' },
+  { id: '3', text: "币安有什么新上币吗？", category: 'company' },
+  { id: '4', text: "今天加密货币市场怎么样？", category: 'general' },
+  { id: '5', text: "24 小时涨幅榜有哪些？", category: 'price' },
+  { id: '6', text: "最新的监管新闻？", category: 'news' },
+];
+
 export const generateAIResponse = (userMessage: string): string => {
   const lowerMsg = userMessage.toLowerCase();
   

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Zap, Globe, Loader2, Package } from 'lucide-react';
+import { Zap, Globe, Loader2, Package } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
-import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import { translateHighlightSummary } from '../services/apiTranslation';
 import { translateNewsArticles, translateStockIndices, translateCommodities, translateCurrencyRates } from '../services/translation';
@@ -248,7 +247,7 @@ export const MarketsPage = () => {
   const [commoditiesLoading, setCommoditiesLoading] = useState(false);
   const [currencies, setCurrencies] = useState<any[]>([]);
   const [currenciesLoading, setCurrenciesLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lastUpdated] = useState<Date | null>(null);
 
   // 初始化时从缓存读取所有可用数据
   useEffect(() => {

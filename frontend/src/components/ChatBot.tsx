@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '../types/chat';
-import { suggestedQuestions, formatTime } from '../data/chatData';
+import { suggestedQuestions, formatTime, suggestedQuestionsZh } from '../data/chatData';
+import { useLanguage } from '../contexts/LanguageContext';
+import { usePageContext } from '../hooks/usePageContext';
 import {
   MessageSquare,
   X,
@@ -11,12 +13,16 @@ import {
 } from 'lucide-react';
 
 export const ChatBot = () => {
+  const { language } = useLanguage();
+  const { pageContext } = usePageContext();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hello! I'm your OKX Crypto Pulse Assistant.\n\nI can help you with:\n• Market analysis & trends\n• Crypto news & regulations\n• Exchange announcements\n• Price data insights\n\nI'll be honest when I don't have access to real-time data. Let's explore the markets together!",
+      content: language === 'zh' 
+        ? "您好！我是 OKX Crypto Pulse 智能助手。\n\n我可以帮您：\n• 市场分析与趋势\n• 加密货币新闻与监管\n• 交易所公告\n• 价格数据洞察\n\n如有实时数据限制，我会如实告知。一起探索加密市场吧！"
+        : "Hello! I'm your OKX Crypto Pulse Assistant.\n\nI can help you with:\n• Market analysis & trends\n• Crypto news & regulations\n• Exchange announcements\n• Price data insights\n\nI'll be honest when I don't have access to real-time data. Let's explore the markets together!",
       timestamp: new Date().toISOString(),
     }
   ]);
@@ -60,21 +66,22 @@ export const ChatBot = () => {
         body: JSON.stringify({
           message: content.trim(),
           context: messages.slice(-5), // Last 5 messages for context
-          page_context: 'general'
+          page_context: pageContext,
+          language: language
         }),
       });
 
       const data = await response.json();
-      
+
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
         timestamp: new Date().toISOString(),
       };
-      
+
       setMessages(prev => [...prev, aiResponse]);
-      
+
       // Update suggested questions
       if (data.suggested_questions && data.suggested_questions.length > 0) {
         setSuggested(data.suggested_questions);
@@ -200,7 +207,9 @@ export const ChatBot = () => {
                 </div>
                 <div className="bg-black border border-okx-border rounded px-3 py-2 flex items-center gap-2">
                   <Loader2 size={12} className="text-white animate-spin" />
-                  <span className="text-xs text-okx-text-muted">Thinking...</span>
+                  <span className="text-xs text-okx-text-muted">
+                    {language === 'zh' ? '思考中...' : 'Thinking...'}
+                  </span>
                 </div>
               </div>
             )}
@@ -211,9 +220,11 @@ export const ChatBot = () => {
           {/* Suggested Questions */}
           {messages.length < 3 && !isTyping && (
             <div className="px-3 py-2 border-t border-okx-border flex-shrink-0">
-              <p className="text-[10px] text-okx-text-muted mb-1.5">Suggested:</p>
+              <p className="text-[10px] text-okx-text-muted mb-1.5">
+                {language === 'zh' ? '建议问题：' : 'Suggested:'}
+              </p>
               <div className="flex flex-wrap gap-1.5">
-                {(suggested.length > 0 ? suggested : suggestedQuestions.slice(0, 3).map(q => q.text)).slice(0, 3).map((q, idx) => (
+                {(suggested.length > 0 ? suggested : (language === 'zh' ? suggestedQuestionsZh : suggestedQuestions).slice(0, 3).map(q => q.text)).slice(0, 3).map((q, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleSend(q)}

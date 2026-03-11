@@ -79,7 +79,7 @@ class PulseRecommendation(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    """Chat message for Gemini Agent"""
+    """Chat message for AI Agent"""
     role: Literal["user", "assistant", "system"]
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -89,11 +89,12 @@ class ChatRequest(BaseModel):
     """Chat request from frontend"""
     message: str
     context: Optional[List[ChatMessage]] = []
-    page_context: Optional[str] = None  # current page: news/markets/company/crypto
+    page_context: Optional[str] = None  # current page: news/markets/company/crypto/pulse
+    language: Optional[str] = "zh"  # zh or en
 
 
 class ChatResponse(BaseModel):
-    """Chat response from Gemini Agent"""
+    """Chat response from AI Agent"""
     message: str
     suggested_questions: List[str] = []
     related_data: Optional[dict] = None

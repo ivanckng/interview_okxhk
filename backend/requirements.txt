@@ -1,4 +1,4 @@
-# FastAPI
+# FastAPI Framework
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 
@@ -8,8 +8,7 @@ httpx>=0.25.0
 # WebSocket
 websockets>=12.0
 
-# Environment
-dotenv>=0.9.9
+# Environment Variables
 python-dotenv>=1.0.0
 
 # Data Validation
@@ -24,3 +23,20 @@ APScheduler>=3.10.0
 
 # Utilities
 python-dateutil>=2.8.0
+pytz>=2023.3
+
+# Data Sources
+yfinance>=0.2.31
+akshare>=1.11.0
+
+# XML Parsing (for RSS feeds)
+# (Included in Python standard library)
+
+# JSON Handling
+# (Included in Python standard library)
+
+# Timezone
+# pytz included above
+
+# Async Support
+# asyncio (Included in Python standard library)

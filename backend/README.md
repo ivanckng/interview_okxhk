@@ -8,8 +8,7 @@ AI-powered backend for Crypto Pulse Dashboard using FastAPI.
 backend/
 ├── agents/           # AI Agents
 │   ├── deepseek_agent.py   # Data processing & Highlights
-│   └── (qwen_agent.py)     # Pulse recommendations (TODO)
-│   └── (gemini_agent.py)   # Chatbot (TODO)
+│   └── qwen_agent.py       # Chat & Pulse recommendations
 ├── data_sources/     # Data connectors
 │   └── bwenews.py          # 方程式新闻 WebSocket/RSS
 ├── models/           # Pydantic schemas
@@ -39,7 +38,6 @@ cp .env.example .env
 # Edit .env and add your keys:
 # - DEEPSEEK_API_KEY (required)
 # - QWEN_API_KEY (optional)
-# - GEMINI_API_KEY (optional)
 ```
 
 ### 3. Run Server
@@ -71,7 +69,7 @@ Server will start at `http://localhost:8000`
 - `GET /api/highlights/crypto` - Crypto page summary
 
 ### Chat
-- `POST /api/chat` - Gemini chatbot (TODO)
+- `POST /api/chat` - Qwen AI chatbot
 
 ### WebSocket
 - `WS /ws/news` - Real-time news updates
@@ -90,8 +88,7 @@ Server will start at `http://localhost:8000`
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | DeepSeek | deepseek-chat | News processing, Highlights |
-| Qwen | (TODO) | Pulse page recommendations |
-| Gemini | (TODO) | Chatbot |
+| Qwen | qwen-plus | Chat assistant, Pulse recommendations |
 
 ## Cache Strategy
 

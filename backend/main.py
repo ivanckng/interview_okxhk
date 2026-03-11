@@ -1,6 +1,6 @@
 """
 Crypto Pulse Dashboard - FastAPI Backend
-AI Agents Dashboard with DeepSeek, Qwen, and Gemini
+AI Agents Dashboard with DeepSeek and Qwen
 """
 import os
 import asyncio
@@ -79,13 +79,7 @@ async def lifespan(app: FastAPI):
         print("✅ Qwen API Key configured")
     else:
         print("⚠️ Qwen API Key not found (optional)")
-    
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if gemini_key:
-        print("✅ Gemini API Key configured")
-    else:
-        print("⚠️ Gemini API Key not found (optional)")
-    
+
     # Load cached news
     news_cache = get_news_cache()
     cached = news_cache.get("processed_news")
@@ -151,8 +145,7 @@ async def health_check():
         "status": "healthy",
         "services": {
             "deepseek": bool(os.getenv("DEEPSEEK_API_KEY")),
-            "qwen": bool(os.getenv("QWEN_API_KEY")),
-            "gemini": bool(os.getenv("GEMINI_API_KEY"))
+            "qwen": bool(os.getenv("QWEN_API_KEY"))
         },
         "cache_stats": {
             "news": get_news_cache().get_stats(),
@@ -416,7 +409,7 @@ async def chat(request: ChatRequest):
 
         # 3. Competitors data - from cache or fetch fresh
         competitors_data = {"announcements": [], "ai_analysis": {}}
-        cached_competitors = get_highlight_cache().get("competitors_analysis")
+        cached_competitors = get_highlight_cache().get("competitors_highlight")
         if cached_competitors:
             competitors_data["ai_analysis"] = cached_competitors
             competitors_data["announcements"] = cached_competitors.get("announcements", [])
@@ -473,6 +466,8 @@ async def chat(request: ChatRequest):
         crypto_pulse = crypto_data["ai_analysis"].get("market_pulse", "暂无加密分析")[:200]
         btc_price = None
         eth_price = None
+        total_market_cap = None
+        total_volume = None
         if crypto_data["coins"]:
             for coin in crypto_data["coins"]:
                 if isinstance(coin, dict):
@@ -480,6 +475,11 @@ async def chat(request: ChatRequest):
                         btc_price = coin.get("current_price") or coin.get("price")
                     elif coin.get("symbol", "").upper() == "ETH":
                         eth_price = coin.get("current_price") or coin.get("price")
+        
+        # Get global market data
+        if crypto_data.get("global"):
+            total_market_cap = crypto_data["global"].get("total_market_cap")
+            total_volume = crypto_data["global"].get("total_volume")
 
         # ========== Build System Prompt with Data Context ==========
         
@@ -525,6 +525,8 @@ You have access to the following REAL-TIME data from the OKX Crypto Pulse dashbo
 - Coins tracked: {len(crypto_data['coins'])}
 - BTC Price: ${btc_price} (if available)
 - ETH Price: ${eth_price} (if available)
+- Total Market Cap: ${total_market_cap / 1e12:.2f}T (if available)
+- Total Volume 24h: ${total_volume / 1e9:.2f}B (if available)
 - Market Pulse: {crypto_pulse}
 
 """
@@ -568,12 +570,19 @@ You have access to the following REAL-TIME data from the OKX Crypto Pulse dashbo
         # Call Qwen API
         response = await agent._call_api(messages, temperature=0.5)
 
-        # Generate contextual suggested questions
-        suggested = [
-            "What's driving the current market trend?",
-            "Any major regulatory developments?",
-            "How are competitors responding?"
-        ]
+        # Generate contextual suggested questions based on language
+        if request.language == "zh":
+            suggested = [
+                "当前市场趋势的驱动因素是什么？",
+                "有什么重大监管发展吗？",
+                "竞争对手如何应对？"
+            ]
+        else:
+            suggested = [
+                "What's driving the current market trend?",
+                "Any major regulatory developments?",
+                "How are competitors responding?"
+            ]
 
         return ChatResponse(
             message=response,
@@ -914,10 +923,14 @@ async def get_crypto_prices(limit: int = 20):
     client = get_crypto_price_client()
     prices = await client.get_top_coins(limit)
     global_data = await client.get_global_data()
-    
+
+    print(f"[Crypto API] Fetched {len(prices)} coins, global_data keys: {global_data.keys() if global_data else 'None'}")
+    print(f"[Crypto API] Total market cap: {global_data.get('total_market_cap') if global_data else 'N/A'}")
+    print(f"[Crypto API] Total volume: {global_data.get('total_volume') if global_data else 'N/A'}")
+
     # Generate highlights
     agent = get_deepseek_agent()
-    highlight = await agent.generate_crypto_highlight(prices[:10])
+    highlight = await agent.generate_crypto_highlight(prices[:10], global_data)
     
     result = {
         "coins": prices,
@@ -1042,7 +1055,7 @@ async def get_pulse_trends(timeframe: str = "7d"):
 async def get_pulse_comprehensive(language: str = "zh"):
     """
     Get comprehensive analysis from all four pages with Redis caching
-    Cache TTL: 15 minutes
+    Cache TTL: 20 minutes
     """
     from utils.redis_cache import cache_get, cache_set
     
@@ -1137,8 +1150,8 @@ async def get_pulse_comprehensive(language: str = "zh"):
             "last_updated": datetime.utcnow().isoformat(),
         }
 
-        # Save to Redis (15 minutes TTL)
-        cache_set(cache_key, result, 900)
+        # Save to Redis (20 minutes TTL)
+        cache_set(cache_key, result, 1200)
 
         return result
 
