@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import { translateHighlightSummary } from '../services/apiTranslation';
 import { translateNewsArticles, translateStockIndices, translateCommodities, translateCurrencyRates } from '../services/translation';
+import * as cacheService from '../services/cache';
 import type { HighlightSummary } from '../services/api';
 
 // 地区股指 Mock 数据（fallback）
@@ -247,6 +248,16 @@ export const MarketsPage = () => {
   const [commoditiesLoading, setCommoditiesLoading] = useState(false);
   const [currencies, setCurrencies] = useState<any[]>([]);
   const [currenciesLoading, setCurrenciesLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // 初始化時從緩存讀取 highlight
+  useEffect(() => {
+    const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
+    if (cached) {
+      setHighlight(cached);
+      setLoading(false);
+    }
+  }, []);
 
   const t = staticTranslations[language];
 
@@ -269,11 +280,13 @@ export const MarketsPage = () => {
             generated_at: new Date().toISOString(),
           };
 
-          // Translate if Chinese
+          // Translate if Chinese and save to cache
           if (language === 'zh' && highlightData.summary) {
             const translated = await translateHighlightSummary(highlightData, 'zh');
+            cacheService.setCache('marketHighlight', translated);
             setHighlight(translated);
           } else {
+            cacheService.setCache('marketHighlight', highlightData);
             setHighlight(highlightData);
           }
         }
@@ -477,7 +490,7 @@ export const MarketsPage = () => {
         const response = await fetch(`http://localhost:8000/api/news/breaking`);
         if (response.ok) {
           const data = await response.json();
-          
+
           // Transform API data to our format
           const transformedNews = (data.articles || []).map((article: any) => ({
             id: article.id,
@@ -493,6 +506,7 @@ export const MarketsPage = () => {
 
           // Use real API data only (no mock fallback)
           setBreakingNews(transformedNews);
+          setLastUpdated(new Date());
         } else {
           // Empty array if API fails
           setBreakingNews([]);
@@ -688,9 +702,19 @@ export const MarketsPage = () => {
 
       {/* Module 3: Breaking News */}
       <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Zap size={18} className="text-yellow-400" />
-          <h2 className="text-white font-medium text-sm">{t.breakingNews}</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Zap size={18} className="text-yellow-400" />
+            <h2 className="text-white font-medium text-sm">{t.breakingNews}</h2>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-okx-text-muted">
+            <span className="px-2 py-0.5 bg-white/10 rounded text-white/80">GNews</span>
+            {lastUpdated && (
+              <span>
+                {language === 'zh' ? '更新于' : 'Updated'}: {lastUpdated.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* News Grid - 1 row x 4 columns (or fewer if less news) */}

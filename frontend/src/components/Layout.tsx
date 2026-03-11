@@ -1,22 +1,17 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Bitcoin, Building2, RefreshCw, Clock, Newspaper, BarChart3, Sparkles } from 'lucide-react';
+import { Bitcoin, Building2, Info, Clock, Newspaper, BarChart3, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { ChatBot } from './ChatBot';
 
 export const Layout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
-  };
 
   // 导航栏标签（固定简体中文）
   const navLabels = {
@@ -80,22 +75,38 @@ export const Layout = () => {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center gap-1.5 text-okx-text-muted text-xs">
                 <Clock size={12} />
-                <span className="font-mono">{currentTime.toLocaleString('en-HK', { 
-                  year: 'numeric', 
-                  month: '2-digit', 
+                <span className="font-mono">{currentTime.toLocaleString('en-HK', {
+                  year: 'numeric',
+                  month: '2-digit',
                   day: '2-digit',
-                  hour: '2-digit', 
+                  hour: '2-digit',
                   minute: '2-digit',
-                  hour12: false 
+                  hour12: false
                 })} HKT</span>
               </div>
 
-              <button
-                onClick={handleRefresh}
-                className="p-2 text-okx-text-secondary hover:text-white transition-colors"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-              </button>
+              {/* Info Icon with Disclaimer Tooltip */}
+              <div className="relative">
+                <button
+                  onMouseEnter={() => setShowDisclaimer(true)}
+                  onMouseLeave={() => setShowDisclaimer(false)}
+                  className="p-2 text-okx-text-secondary hover:text-white transition-colors"
+                >
+                  <Info size={16} />
+                </button>
+
+                {/* Tooltip */}
+                {showDisclaimer && (
+                  <div className="absolute right-0 top-10 w-80 p-3 bg-okx-bg-secondary border border-okx-border rounded-lg shadow-lg z-50">
+                    <p className="text-xs text-okx-text-secondary leading-relaxed">
+                      本网站为 OKX 面试作业而设计，不得用作其他用途。
+                    </p>
+                    <p className="text-xs text-okx-text-secondary leading-relaxed mt-2">
+                      This website is designed for OKX take-home assessment and cannot be used for other purposes.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

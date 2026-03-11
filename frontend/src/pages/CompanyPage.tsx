@@ -255,21 +255,31 @@ export const CompanyPage = () => {
     };
   }, [language, bybitAnnouncements, binanceAnnouncements, bitgetAnnouncements]);
 
-  // Fetch Bybit and Binance real announcements
+  // Fetch Bybit and Binance real announcements with timeout
   useEffect(() => {
+    const fetchWithTimeout = async (url: string, timeout = 60000) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    };
+
     const fetchBybitData = async () => {
       try {
         let locale = language === 'zh' ? 'zh-CN' : 'en-US';
-        let response = await fetch(`http://localhost:8000/api/exchanges/bybit/announcements?locale=${locale}&limit=20`);
+        let response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bybit/announcements?locale=${locale}&limit=20`);
         let data = await response.json();
+        console.log('[Company] Bybit API response:', data.announcements?.length, 'announcements');
 
         // If zh-CN returns empty, fallback to en-US
         if ((!data.announcements || data.announcements.length === 0) && locale === 'zh-CN') {
-          response = await fetch(`http://localhost:8000/api/exchanges/bybit/announcements?locale=en-US&limit=20`);
+          response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bybit/announcements?locale=en-US&limit=20`);
           data = await response.json();
         }
 
         if (data.announcements) {
+          console.log('[Company] Setting Bybit announcements:', data.announcements.length);
           setBybitAnnouncements(data.announcements);
           setBybitUpdateTime(data.last_updated);
         }
@@ -280,10 +290,12 @@ export const CompanyPage = () => {
 
     const fetchBinanceData = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/exchanges/binance/announcements?limit=20`);
+        const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/binance/announcements?limit=20`);
         const data = await response.json();
+        console.log('[Company] Binance API response:', data.announcements?.length, 'announcements');
 
         if (data.announcements) {
+          console.log('[Company] Setting Binance announcements:', data.announcements.length);
           setBinanceAnnouncements(data.announcements);
           setBinanceUpdateTime(data.last_updated);
         }
@@ -295,10 +307,12 @@ export const CompanyPage = () => {
     const fetchBitgetData = async () => {
       try {
         let lang = language === 'zh' ? 'zh_CN' : 'en_US';
-        const response = await fetch(`http://localhost:8000/api/exchanges/bitget/announcements?language=${lang}&limit=10`);
+        const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bitget/announcements?language=${lang}&limit=10`);
         const data = await response.json();
+        console.log('[Company] Bitget API response:', data.announcements?.length, 'announcements');
 
         if (data.announcements) {
+          console.log('[Company] Setting Bitget announcements:', data.announcements.length);
           setBitgetAnnouncements(data.announcements);
           setBitgetUpdateTime(data.last_updated);
         }

@@ -6,6 +6,8 @@ API Documentation: https://www.bitget.com/api-doc/common/notice/Get-All-Notices
 import requests
 from typing import List, Dict, Any
 from datetime import datetime
+import time
+from utils.redis_cache import cache_get, cache_set
 
 
 class BitgetAnnouncementClient:
@@ -14,9 +16,11 @@ class BitgetAnnouncementClient:
     Fetches real announcements from Bitget API
     Note: API endpoint has typo 'annoucements' instead of 'announcements'
     """
-    
+
     BASE_URL = "https://api.bitget.com/api/v2/public/annoucements"
-    
+    CACHE_KEY = "bitget_announcements"
+    CACHE_TTL = 600  # 10 minutes
+
     # API announcement types mapping
     ANNOUNCEMENT_TYPES = {
         'new_cryptocurrency_listings': 'new_listing',
@@ -26,18 +30,35 @@ class BitgetAnnouncementClient:
         'product_related': 'product_update',
         'delistings': 'delisting',
     }
-    
+
+    def __init__(self):
+        self._cache = []
+        self._cache_time = 0
+        self._cache_ttl = 300  # 5 minutes
+
     def get_announcements(self, language: str = "en_US", limit: int = 20) -> List[Dict[str, Any]]:
         """
-        Fetch announcements from Bitget
-        
+        Fetch announcements from Bitget with caching (Redis + Memory)
+
         Args:
             language: Language code (en_US, zh_CN, etc.)
             limit: Number of announcements to fetch
-            
+
         Returns:
             List of announcement dictionaries
         """
+        cache_key = f"{self.CACHE_KEY}_{language}_{limit}"
+        
+        # Try Redis cache first
+        cached_data = cache_get(cache_key)
+        if cached_data:
+            print(f"✅ Redis cache hit: {cache_key}")
+            return cached_data[:limit]
+
+        # Check memory cache
+        if self._cache and (time.time() - self._cache_time) < self._cache_ttl:
+            print(f"✅ Memory cache hit: {cache_key}")
+            return self._cache[:limit]
         # Bitget API only supports max limit of 10
         params = {
             'language': language,
@@ -69,7 +90,14 @@ class BitgetAnnouncementClient:
                 announcement = self._parse_item(item)
                 if announcement:
                     formatted.append(announcement)
-            
+
+            # Update cache
+            self._cache = formatted
+            self._cache_time = time.time()
+
+            # Save to Redis
+            cache_set(cache_key, formatted, self.CACHE_TTL)
+
             print(f"✅ Fetched {len(formatted)} announcements from Bitget ({language})")
             return formatted
             

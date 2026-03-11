@@ -6,6 +6,8 @@ Documentation: https://bybit-exchange.github.io/docs/v5/announcement
 import requests
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
+import time
+from utils.redis_cache import cache_get, cache_set
 
 
 class BybitAnnouncementClient:
@@ -13,20 +15,41 @@ class BybitAnnouncementClient:
     Bybit Announcement Client
     Fetches real announcements from Bybit API
     """
-    
+
     BASE_URL = "https://api.bybit.com/v5/announcements/index"
-    
+    CACHE_KEY = "bybit_announcements"
+    CACHE_TTL = 600  # 10 minutes
+
+    def __init__(self):
+        self._cache = []
+        self._cache_time = 0
+        self._cache_ttl = 300  # 5 minutes
+
     def get_announcements(self, locale: str = "en-US", limit: int = 20) -> List[Dict[str, Any]]:
         """
-        Fetch announcements from Bybit
-        
+        Fetch announcements from Bybit with caching (Redis + Memory)
+
         Args:
             locale: Language locale (e.g., "en-US", "zh-CN")
             limit: Number of announcements to fetch
-            
+
         Returns:
             List of announcement dictionaries
         """
+        cache_key = f"{self.CACHE_KEY}_{locale}_{limit}"
+        
+        # Try Redis cache first
+        cached_data = cache_get(cache_key)
+        if cached_data:
+            print(f"✅ Redis cache hit: {cache_key}")
+            return cached_data[:limit]
+
+        # Check memory cache
+        if self._cache and (time.time() - self._cache_time) < self._cache_ttl:
+            print(f"✅ Memory cache hit: {cache_key}")
+            return self._cache[:limit]
+
+        # Fetch from API
         params = {
             'locale': locale,
             'limit': min(limit, 100)
@@ -75,7 +98,14 @@ class BybitAnnouncementClient:
             
             # Sort by priority score (descending), then by date (newest first)
             formatted.sort(key=lambda x: (-x['priority_score'], -self._parse_timestamp(x['publish_time'])))
-            
+
+            # Update cache
+            self._cache = formatted
+            self._cache_time = time.time()
+
+            # Save to Redis
+            cache_set(cache_key, formatted, self.CACHE_TTL)
+
             print(f"✅ Fetched {len(formatted)} announcements from Bybit ({locale})")
             return formatted
             

@@ -6,6 +6,8 @@ import requests
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import re
+import time
+from utils.redis_cache import cache_get, cache_set
 
 
 class BinanceAnnouncementClient:
@@ -13,26 +15,46 @@ class BinanceAnnouncementClient:
     Binance Announcement Client
     Fetches real announcements from Binance API
     """
-    
+
     # Binance CMS API for announcements
     CATALOG_IDS = {
         'latest': 48,      # Latest News
         'new_listings': 161,  # New Cryptocurrency Listings
     }
-    
+
     BASE_URL = "https://www.binance.com/bapi/composite/v1/public/cms/article/catalog/list/query"
-    
+    CACHE_KEY = "binance_announcements"
+    CACHE_TTL = 600  # 10 minutes
+
+    def __init__(self):
+        self._cache = []
+        self._cache_time = 0
+        self._cache_ttl = 300  # 5 minutes
+
     def get_announcements(self, limit: int = 20, category: str = "all") -> List[Dict[str, Any]]:
         """
-        Fetch announcements from Binance API
-        
+        Fetch announcements from Binance API with caching (Redis + Memory)
+
         Args:
             limit: Number of announcements to fetch
             category: Feed category ('all', 'new_listings', 'latest_news')
-            
+
         Returns:
             List of announcement dictionaries
         """
+        cache_key = f"{self.CACHE_KEY}_{category}_{limit}"
+        
+        # Try Redis cache first
+        cached_data = cache_get(cache_key)
+        if cached_data:
+            print(f"✅ Redis cache hit: {cache_key}")
+            return cached_data[:limit]
+
+        # Check memory cache
+        if self._cache and (time.time() - self._cache_time) < self._cache_ttl:
+            print(f"✅ Memory cache hit: {cache_key}")
+            return self._cache[:limit]
+
         try:
             announcements = []
             
@@ -62,6 +84,14 @@ class BinanceAnnouncementClient:
             )
             
             result = announcements[:limit]
+
+            # Update cache
+            self._cache = result
+            self._cache_time = time.time()
+
+            # Save to Redis
+            cache_set(cache_key, result, self.CACHE_TTL)
+
             print(f"✅ Fetched {len(result)} announcements from Binance ({category})")
             return result
             

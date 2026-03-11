@@ -60,21 +60,25 @@ You are an OKX Business Operations Intelligence Agent. Analyze the following cry
 **News Items:**
 {self._format_news(news_data)}
 
-Based on this news data, provide a concise analysis in JSON format:
+Based on this news data, provide a concise analysis in JSON format.
+
+**IMPORTANT: You MUST respond in Simplified Chinese (简体中文) only!**
+
+Provide your analysis in this JSON format:
 {{
-  "market_pulse": "2-3 sentence summary of overall crypto news sentiment and key themes from OKX business perspective",
-  "key_insights": ["insight 1", "insight 2", "insight 3"],
-  "hot_sectors": ["sector 1", "sector 2"],
-  "risk_alerts": ["risk 1", "risk 2"],
+  "market_pulse": "2-3 句简体中文总结整体加密新闻情绪和关键主题，从 OKX 业务角度",
+  "key_insights": ["简体中文洞察 1", "简体中文洞察 2", "简体中文洞察 3"],
+  "hot_sectors": ["热门板块 1", "热门板块 2"],
+  "risk_alerts": ["风险警告 1", "风险警告 2"],
   "overall_sentiment": "bullish|bearish|neutral",
-  "action_items": ["action 1", "action 2", "action 3"]
+  "action_items": ["简体中文行动建议 1", "简体中文行动建议 2", "简体中文行动建议 3"]
 }}
 
 Focus on:
-- Regulatory developments requiring OKX compliance action
-- Competitor moves threatening OKX market position
-- Institutional adoption trends impacting OKX volume/revenue
-- Security incidents requiring OKX risk management
+- 需要 OKX 合规行动的监管发展
+- 威胁 OKX 市场地位的竞争对手动向
+- 影响 OKX 交易量/收入的机构采用趋势
+- 需要 OKX 风险管理的 security 事件
 """
 
             async with httpx.AsyncClient() as client:
@@ -87,7 +91,7 @@ Focus on:
                     json={
                         "model": "deepseek-chat",
                         "messages": [
-                            {"role": "system", "content": "You are a professional crypto market analyst working for OKX. Return analysis in JSON format only."},
+                            {"role": "system", "content": "You are a professional crypto market analyst working for OKX. You MUST respond in Simplified Chinese (简体中文). Return analysis in JSON format only."},
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": 0.3,

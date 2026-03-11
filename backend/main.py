@@ -34,6 +34,7 @@ env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
 
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
+from utils.scheduler import init_scheduler, get_scheduler
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
@@ -41,7 +42,7 @@ from data_sources.market_data import get_market_data_client
 from data_sources.crypto_prices import get_crypto_price_client
 from data_sources.comprehensive_market import get_comprehensive_market_client
 from data_sources.trading_economics import get_trading_economics_client
-from data_sources.newsdata import get_newsdata_client
+from data_sources.gnews import get_gnews_client
 from data_sources.fred import get_fred_client
 from data_sources.tushare import get_tushare_client
 from data_sources.yfinance_data import get_yahoo_finance_client
@@ -94,11 +95,18 @@ async def lifespan(app: FastAPI):
         global processed_news
         processed_news = [ProcessedNews(**item) for item in cached]
         print(f"✅ Loaded {len(processed_news)} news from cache")
-    
+
+    # Initialize scheduler with daily 7 AM refresh
+    scheduler = init_scheduler(refresh_hour=7)
+    # Register news refresh callback
+    scheduler.register_refresh_callback(_fetch_and_process_news)
+
     yield
     
     # Shutdown
     print("🛑 Shutting down...")
+    # Shutdown scheduler
+    get_scheduler().shutdown()
     # Persist cache
     news_cache.persist()
     get_highlight_cache().persist()
@@ -140,6 +148,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    scheduler = get_scheduler()
     return {
         "status": "healthy",
         "services": {
@@ -147,6 +156,49 @@ async def health_check():
             "qwen": bool(os.getenv("QWEN_API_KEY")),
             "gemini": bool(os.getenv("GEMINI_API_KEY"))
         },
+        "cache_stats": {
+            "news": get_news_cache().get_stats(),
+            "highlights": get_highlight_cache().get_stats(),
+            "market": get_market_cache().get_stats()
+        },
+        "scheduler": {
+            "last_refresh": scheduler.get_last_refresh().isoformat() if scheduler.get_last_refresh() else None,
+            "next_refresh": "Daily at 7:00 AM"
+        }
+    }
+
+
+# ==================== Cache Management API ====================
+
+@app.post("/api/cache/global-refresh")
+async def global_refresh_cache():
+    """
+    Manually trigger global cache refresh
+    This clears all caches and refreshes data from all sources
+    """
+    scheduler = get_scheduler()
+    await scheduler.global_refresh()
+    
+    return {
+        "message": "Global cache refresh completed",
+        "last_refresh": scheduler.get_last_refresh().isoformat() if scheduler.get_last_refresh() else None,
+        "cache_stats": {
+            "news": get_news_cache().get_stats(),
+            "highlights": get_highlight_cache().get_stats(),
+            "market": get_market_cache().get_stats()
+        }
+    }
+
+
+@app.get("/api/cache/status")
+async def get_cache_status():
+    """
+    Get cache status and statistics
+    """
+    scheduler = get_scheduler()
+    return {
+        "last_refresh": scheduler.get_last_refresh().isoformat() if scheduler.get_last_refresh() else None,
+        "next_scheduled_refresh": "Daily at 7:00 AM",
         "cache_stats": {
             "news": get_news_cache().get_stats(),
             "highlights": get_highlight_cache().get_stats(),
@@ -330,22 +382,216 @@ async def get_crypto_highlight():
     return highlight
 
 
-# ==================== Chat API (Gemini) ====================
+# ==================== Chat API (Qwen) ====================
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    Chat with Gemini Agent
+    Chat with Qwen Agent - OKX Professional Crypto Copilot
+    With comprehensive data from all 4 pages (using cached data)
     """
-    # TODO: Implement Gemini integration
-    return ChatResponse(
-        message="Chat feature coming soon. Please configure GEMINI_API_KEY.",
-        suggested_questions=[
-            "What is the current Bitcoin price?",
-            "Any important news today?",
-            "What are the trending cryptocurrencies?"
+    try:
+        agent = get_qwen_agent()
+        global processed_news
+
+        # ========== Fetch comprehensive data from CACHE (not API calls) ==========
+
+        # 1. News data - from memory cache
+        news_data = {
+            "news": processed_news[:20],
+            "trending": [n for n in processed_news if n.hot_score >= 70][:5],
+            "highlight": get_highlight_cache().get("news_highlight") or {},
+        }
+        news_summary = ""
+        if news_data["highlight"]:
+            news_summary = news_data["highlight"].get("summary", "暂无新闻摘要")[:300]
+            news_trend = news_data["highlight"].get("trend", "neutral")
+        else:
+            news_trend = "neutral"
+
+        # 2. Markets data - from cache (no API call)
+        markets_data = {"ai_analysis": {}, "markets_data": {}}
+        cached_market = get_market_cache().get("comprehensive_market_data")
+        if cached_market:
+            markets_data["ai_analysis"] = cached_market.get("ai_analysis", {})
+            markets_data["markets_data"] = cached_market.get("data", {})
+
+        # 3. Competitors data - from cache or fetch fresh
+        competitors_data = {"announcements": [], "ai_analysis": {}}
+        cached_competitors = get_highlight_cache().get("competitors_analysis")
+        if cached_competitors:
+            competitors_data["ai_analysis"] = cached_competitors
+            competitors_data["announcements"] = cached_competitors.get("announcements", [])
+
+        # 4. Crypto data - from cache (no API call)
+        crypto_data = {"coins": [], "global": {}, "ai_analysis": {}}
+        cached_crypto_prices = get_market_cache().get("crypto_prices_20")
+        if cached_crypto_prices:
+            crypto_data["coins"] = cached_crypto_prices.get("coins", [])
+            crypto_data["global"] = cached_crypto_prices.get("global", {})
+            crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
+        
+        cached_crypto_analysis = get_highlight_cache().get("crypto_highlight")
+        if cached_crypto_analysis:
+            crypto_data["ai_analysis"] = {"market_pulse": cached_crypto_analysis.get("summary", "")}
+
+        # ========== Prepare data context for Qwen ==========
+        
+        # Format news titles
+        news_titles = ""
+        if news_data["news"]:
+            titles = []
+            for n in news_data["news"][:10]:
+                priority = n.priority.value if hasattr(n.priority, 'value') else str(n.priority)
+                title = n.title[:60] if hasattr(n, 'title') else str(n)[:60]
+                titles.append(f"  - [{priority.upper()}] {title}")
+            news_titles = "\n".join(titles)
+
+        # Format markets summary
+        markets_pulse = markets_data["ai_analysis"].get("market_pulse", "暂无宏观分析")[:200]
+        markets_insights = markets_data["ai_analysis"].get("key_insights", [])[:2]
+        
+        # Format economy indicators
+        economy_indicators = markets_data.get("markets_data", {}).get("economy_indicators", {})
+        economy_summary = []
+        for country, indicators in economy_indicators.items():
+            if isinstance(indicators, dict):
+                gdp = indicators.get("gdp_annual", {})
+                cpi = indicators.get("cpi", {})
+                if gdp.get("value"):
+                    economy_summary.append(f"• {country.upper()} GDP: {gdp.get('value')}%")
+                if cpi.get("value"):
+                    economy_summary.append(f"• {country.upper()} CPI: {cpi.get('value')}%")
+        economy_text = "\n".join(economy_summary[:5]) if economy_summary else "暂无经济指标数据"
+
+        # Format competitors summary
+        comp_announcements = competitors_data["announcements"]
+        binance_count = len([a for a in comp_announcements if a.get("exchange") == "binance"])
+        bybit_count = len([a for a in comp_announcements if a.get("exchange") == "bybit"])
+        bitget_count = len([a for a in comp_announcements if a.get("exchange") == "bitget"])
+        comp_summary = competitors_data["ai_analysis"].get("summary", "暂无竞对分析")[:200] if competitors_data["ai_analysis"] else "暂无竞对分析"
+
+        # Format crypto summary
+        crypto_pulse = crypto_data["ai_analysis"].get("market_pulse", "暂无加密分析")[:200]
+        btc_price = None
+        eth_price = None
+        if crypto_data["coins"]:
+            for coin in crypto_data["coins"]:
+                if isinstance(coin, dict):
+                    if coin.get("symbol", "").upper() == "BTC":
+                        btc_price = coin.get("current_price") or coin.get("price")
+                    elif coin.get("symbol", "").upper() == "ETH":
+                        eth_price = coin.get("current_price") or coin.get("price")
+
+        # ========== Build System Prompt with Data Context ==========
+        
+        system_prompt = """# OKX Crypto Pulse - Professional Assistant
+
+## Your Identity
+You are the **OKX Crypto Pulse Intelligent Assistant**, a professional AI helper integrated into the OKX Crypto Pulse dashboard.
+
+## Core Principles
+1. **Be Honest**: If you don't have access to specific data, say so clearly
+2. **Be Accurate**: Use the real data provided below when answering
+3. **Be Professional**: Keep responses concise (2-4 sentences) and informative
+4. **Guide Users**: Direct users to relevant tabs for more details
+
+## Current Available Data
+You have access to the following REAL-TIME data from the OKX Crypto Pulse dashboard:
+"""
+
+        # Add data context to system prompt
+        data_context = f"""
+
+### 📰 News Data (热点新闻)
+- News count: {len(news_data['news'])} articles
+- Trending: {len(news_data['trending'])} hot stories
+- Trend: {news_trend}
+- AI Summary: {news_summary}
+- Top Headlines:
+{news_titles}
+
+### 📊 Markets Data (宏观市场)
+- Market Pulse: {markets_pulse}
+- Key Insights: {', '.join(markets_insights) if markets_insights else '暂无'}
+- Economic Indicators:
+{economy_text}
+
+### 🏢 Competitors Data (竞对动向)
+- Binance: {binance_count} announcements
+- Bybit: {bybit_count} announcements  
+- Bitget: {bitget_count} announcements
+- AI Analysis: {comp_summary}
+
+### ₿ Crypto Data (加密货币)
+- Coins tracked: {len(crypto_data['coins'])}
+- BTC Price: ${btc_price} (if available)
+- ETH Price: ${eth_price} (if available)
+- Market Pulse: {crypto_pulse}
+
+"""
+
+        system_prompt += data_context
+
+        # Add page-specific context
+        if request.page_context:
+            page_contexts = {
+                "news": "User is on News page - focus on news analysis and regulatory developments.",
+                "markets": "User is on Markets page - focus on macroeconomic indicators and correlations.",
+                "company": "User is on Company page - focus on competitor analysis and OKX positioning.",
+                "crypto": "User is on Crypto page - focus on prices, market cap, and sentiment.",
+                "pulse": "User is on Pulse page - provide holistic cross-dimensional insights.",
+                "general": "User asking general questions - provide balanced comprehensive responses."
+            }
+            context = page_contexts.get(request.page_context, "")
+            if context:
+                system_prompt += f"\n## Current Context\n{context}"
+
+        system_prompt += """
+
+## Response Guidelines
+- Use the data above to answer questions accurately
+- If asked about something not in the data, say: "I don't have access to that information. Please check the relevant tab."
+- Never fabricate prices, news, or data
+- Be honest about limitations
+"""
+
+        # Initialize messages array
+        messages = []
+        messages.append({"role": "system", "content": system_prompt})
+
+        # Add conversation context
+        for ctx in request.context or []:
+            messages.append({"role": ctx.role, "content": ctx.content})
+
+        # Add current message
+        messages.append({"role": "user", "content": request.message})
+
+        # Call Qwen API
+        response = await agent._call_api(messages, temperature=0.5)
+
+        # Generate contextual suggested questions
+        suggested = [
+            "What's driving the current market trend?",
+            "Any major regulatory developments?",
+            "How are competitors responding?"
         ]
-    )
+
+        return ChatResponse(
+            message=response,
+            suggested_questions=suggested
+        )
+
+    except Exception as e:
+        print(f"❌ Chat error: {e}")
+        return ChatResponse(
+            message="I apologize, but I'm experiencing technical difficulties. Please try again.",
+            suggested_questions=[
+                "What data sources does Crypto Pulse use?",
+                "How often is the data updated?",
+                "What can you help me with?"
+            ]
+        )
 
 
 # ==================== Market Data API ====================
@@ -794,14 +1040,18 @@ async def get_pulse_trends(timeframe: str = "7d"):
 @app.get("/api/pulse/comprehensive")
 async def get_pulse_comprehensive(language: str = "zh"):
     """
-    Get comprehensive analysis from all four pages:
-    - News (热点新闻)
-    - Markets (宏观市场)
-    - Competitors (竞对动向)
-    - Crypto (加密货币)
-    
-    Integrates all data sources with AI analysis for holistic market intelligence
+    Get comprehensive analysis from all four pages with Redis caching
+    Cache TTL: 15 minutes
     """
+    from utils.redis_cache import cache_get, cache_set
+    
+    # Try cache first
+    cache_key = f"pulse_comprehensive_{language}"
+    cached = cache_get(cache_key)
+    if cached:
+        print(f"✅ Redis cache hit: {cache_key}")
+        return cached
+
     try:
         # Collect data from all four pages
         news_data = {
@@ -875,7 +1125,7 @@ async def get_pulse_comprehensive(language: str = "zh"):
             language=language
         )
 
-        return {
+        result = {
             "comprehensive_analysis": comprehensive_analysis,
             "data_sources": {
                 "news_count": len(news_data["news"]),
@@ -885,6 +1135,11 @@ async def get_pulse_comprehensive(language: str = "zh"):
             },
             "last_updated": datetime.utcnow().isoformat(),
         }
+
+        # Save to Redis (15 minutes TTL)
+        cache_set(cache_key, result, 900)
+
+        return result
 
     except Exception as e:
         print(f"Error in comprehensive pulse analysis: {e}")
@@ -991,10 +1246,11 @@ async def get_all_trading_economics_indicators():
 @app.get("/api/news/breaking")
 async def get_breaking_news():
     """
-    Get breaking news from NewsData.io
+    Get breaking news from GNews.io
+    World news in Chinese
     """
-    newsdata = get_newsdata_client()
-    result = await newsdata.get_news("breaking")
+    gnews = get_gnews_client()
+    result = await gnews.get_breaking_news(category="world", lang="zh", country="cn", max_results=10)
     return result
 
 

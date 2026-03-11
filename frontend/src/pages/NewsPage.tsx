@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { NewsCategory, NewsPriority } from '../types/news';
 import {
   newsCategoryColors
@@ -12,7 +12,9 @@ import {
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { api, formatRelativeTime } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
-import { translateProcessedNews, translateHighlightSummary } from '../services/apiTranslation';
+import { translateHighlightSummary } from '../services/apiTranslation';
+import { useCachedAPI } from '../hooks/useCachedAPI';
+import * as cacheService from '../services/cache';
 import type { ProcessedNews, HighlightSummary } from '../services/api';
 
 const priorityConfig = {
@@ -73,61 +75,59 @@ export const NewsPage = () => {
   const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory | 'all'>('all');
   const [selectedPriority] = useState<NewsPriority | 'all'>('all');
-  const [news, setNews] = useState<ProcessedNews[]>([]);
-  const [trending, setTrending] = useState<ProcessedNews[]>([]);
-  const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(true);
-  const initialLoaded = useRef(false);
+  const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
 
-  // Fetch data from API
-  const fetchData = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setAnalysisLoading(true);
-    setError(null);
+  // 使用緩存 API Hook
+  const {
+    data: cachedNews,
+    loading: newsLoading,
+    refresh: refreshNews,
+  } = useCachedAPI<ProcessedNews[]>({
+    module: 'news',
+    fetcher: async () => {
+      const data = await api.getNews({ limit: 50 });
+      // 翻譯在 useEffect 中處理，避免依賴語言導致無限循環
+      return data;
+    },
+    onDataUpdate: () => setLastUpdated(new Date()),
+  });
 
-    try {
-      const [newsData, trendingData, highlightData] = await Promise.all([
-        api.getNews({ limit: 50 }),
-        api.getTrendingNews(3),
-        api.getNewsHighlight(),
-      ]);
+  const {
+    data: cachedTrending,
+  } = useCachedAPI<ProcessedNews[]>({
+    module: 'news',
+    ttl: 5 * 60, // 5 分鐘
+    fetcher: async () => {
+      return api.getTrendingNews(3);
+    },
+  });
 
-      // 如果是中文，翻译数据
-      if (language === 'zh') {
-        const [translatedNews, translatedTrending, translatedHighlight] = await Promise.all([
-          translateProcessedNews(newsData, 'zh'),
-          translateProcessedNews(trendingData, 'zh'),
-          translateHighlightSummary(highlightData, 'zh'),
-        ]);
-        setNews(translatedNews);
-        setTrending(translatedTrending);
-        setHighlight(translatedHighlight);
-      } else {
-        setNews(newsData);
-        setTrending(trendingData);
-        setHighlight(highlightData);
-      }
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error('Failed to fetch news:', err);
-      setError('Failed to load news. Please try again.');
-    } finally {
-      setLoading(false);
-      setAnalysisLoading(false);
+  // 合併狀態
+  const loading = newsLoading;
+  const news = cachedNews || [];
+  const trending = cachedTrending || [];
+
+  // 初始化時從緩存讀取 highlight
+  useEffect(() => {
+    const cached = cacheService.getCache<HighlightSummary>('newsHighlight');
+    if (cached) {
+      setHighlight(cached);
     }
-  }, [language]);
+  }, []);
 
   // Refresh news from backend
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
       await api.refreshNews();
-      // Wait a bit for processing then fetch
-      setTimeout(() => fetchData(false), 3000);
+      // Wait a bit for processing then refresh cache
+      setTimeout(() => {
+        refreshNews();
+        cacheService.deleteCache('newsHighlight'); // Clear highlight cache too
+      }, 3000);
     } catch (err) {
       console.error('Failed to refresh:', err);
     } finally {
@@ -135,40 +135,26 @@ export const NewsPage = () => {
     }
   };
 
-  // Initial load
-  useEffect(() => {
-    if (initialLoaded.current) return;
-    initialLoaded.current = true;
-    
-    fetchData();
-
-    // Auto refresh every 5 minutes
-    const interval = setInterval(() => fetchData(false), 300000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  // 语言变化时重新获取/翻译数据
-  useEffect(() => {
-    // Skip initial render (language is already handled by initial load)
-    // Only refetch when language changes after initial load
-    fetchData(false);
-  }, [language]);
-
   // Fetch AI analysis of news data (every 10 minutes)
   useEffect(() => {
     const fetchAIAnalysis = async () => {
-      if (news.length === 0) return;
+      // 使用 cachedNews 而不是 news
+      if (!cachedNews || cachedNews.length === 0) return;
 
       setAnalysisLoading(true);
       try {
+        console.log('[News AI] Fetching analysis with', cachedNews.length, 'news items, language:', language);
+        
         const response = await fetch('http://localhost:8000/api/news/analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ news }),
+          body: JSON.stringify({ news: cachedNews }),
         });
         const data = await response.json();
 
         const aiAnalysis = data.ai_analysis;
+        console.log('[News AI] Raw AI analysis:', aiAnalysis?.market_pulse?.substring(0, 50) + '...');
+        
         if (aiAnalysis && !aiAnalysis.error) {
           // Convert AI analysis to highlight format
           const highlightData = {
@@ -179,11 +165,16 @@ export const NewsPage = () => {
             generated_at: new Date().toISOString(),
           };
 
-          // Translate if Chinese
+          // Translate if Chinese and save to cache
           if (language === 'zh' && highlightData.summary) {
+            console.log('[News AI] Translating to Chinese...');
             const translated = await translateHighlightSummary(highlightData, 'zh');
+            console.log('[News AI] Translated summary:', translated.summary?.substring(0, 50) + '...');
+            // Save to cache and update state
+            cacheService.setCache('newsHighlight', translated);
             setHighlight(translated);
           } else {
+            cacheService.setCache('newsHighlight', highlightData);
             setHighlight(highlightData);
           }
         }
@@ -200,7 +191,7 @@ export const NewsPage = () => {
     // Refresh every 10 minutes (600000 ms)
     const interval = setInterval(fetchAIAnalysis, 600000);
     return () => clearInterval(interval);
-  }, [news, language]);
+  }, [cachedNews, language]);
 
   // 类别标签中英文映射
   const categoryLabelMap: Record<NewsCategory, string> = {
@@ -231,20 +222,6 @@ export const NewsPage = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-red-400">{error}</p>
-        <button 
-          onClick={() => fetchData()}
-          className="px-4 py-2 bg-white text-black rounded hover:bg-gray-200 transition-colors"
-        >
-          Retry
-        </button>
       </div>
     );
   }

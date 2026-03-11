@@ -179,19 +179,21 @@ Generate Pulse page strategic analysis for OKX operations team."""
 
 Generate 3 strategic recommendations based on latest crypto news. Each recommendation should focus on what OKX company should do from business perspective.
 
-Each recommendation includes:
-- type: recommendation type (compliance|product|marketing|listing|alert|opportunity)
-- title: catchy title in ENGLISH (3-5 words)
-- description: detailed description in ENGLISH (1-2 sentences) explaining business impact and why OKX should act
-- confidence: confidence level (70-95)
-- action_items: 2-3 specific strategic action items for OKX operations team in ENGLISH
+**IMPORTANT: You MUST respond in Simplified Chinese (简体中文) only!**
 
-Return JSON array in ENGLISH."""
+Each recommendation includes:
+- type: 推荐类型 (compliance|product|marketing|listing|alert|opportunity)
+- title: 吸引人的简体中文标题 (3-8 个字)
+- description: 详细的简体中文描述 (1-2 句话)，解释业务影响和为什么 OKX 应该采取行动
+- confidence: 置信度 (70-95)
+- action_items: 2-3 个具体的简体中文战略行动项，供 OKX 运营团队执行
+
+Return JSON array in Simplified Chinese (简体中文)."""
 
         user_content = f"""Latest News:
 {news_context}
 
-Generate 3 strategic recommendations for OKX business operations team."""
+Generate 3 strategic recommendations for OKX business operations team. Respond in Simplified Chinese (简体中文)."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -230,28 +232,28 @@ Generate 3 strategic recommendations for OKX business operations team."""
             
         except Exception as e:
             print(f"⚠️ Failed to generate recommendations: {e}")
-            # Fallback recommendations in English
+            # Fallback 推薦（簡體中文）
             return [
                 PulseRecommendation(
                     recommendation_type="news",
-                    title="Watch Regulatory Developments",
-                    description="Recent regulatory changes are frequent. OKX users should monitor policy trends closely as they impact exchange operations.",
+                    title="关注监管动态",
+                    description="近期监管变化频繁。OKX 用户应密切关注政策趋势，因为这些变化会影响交易所运营。",
                     confidence=85,
-                    action_items=["Read latest regulatory news", "Assess portfolio risk exposure"]
+                    action_items=["阅读最新监管新闻", "评估投资组合风险敞口"]
                 ),
                 PulseRecommendation(
                     recommendation_type="market",
-                    title="Institutional Inflows",
-                    description="Major institutions continue to accumulate crypto assets, indicating positive market sentiment.",
+                    title="机构资金流入",
+                    description="主要机构继续积累加密资产，表明市场情绪积极。",
                     confidence=78,
-                    action_items=["Monitor institutional holdings", "Consider long-term positions"]
+                    action_items=["监控机构持仓", "考虑长期持仓"]
                 ),
                 PulseRecommendation(
                     recommendation_type="alert",
-                    title="Security Alert",
-                    description="Multiple security incidents reported recently. OKX users should ensure their accounts are secure.",
+                    title="安全警报",
+                    description="最近报告了多起安全事件。OKX 用户应确保其账户安全。",
                     confidence=90,
-                    action_items=["Check wallet security", "Enable 2FA authentication"]
+                    action_items=["检查钱包安全性", "启用 2FA 身份验证"]
                 )
             ]
     

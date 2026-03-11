@@ -83,12 +83,15 @@ You are a professional crypto market analyst. Analyze the following markets data
 **Breaking News:**
 {self._format_news(breaking_news)}
 
-Based on this data, provide a concise analysis in JSON format:
+Based on this data, provide a concise analysis in JSON format.
+
+**IMPORTANT: You MUST respond in Simplified Chinese (简体中文) only!**
+
 {{
-  "market_pulse": "2-3 sentence summary of overall market sentiment",
-  "key_insights": ["insight 1", "insight 2", "insight 3"],
-  "hot_sectors": ["sector 1", "sector 2"],
-  "risk_alerts": ["risk 1", "risk 2"],
+  "market_pulse": "2-3 句简体中文总结整体市场情绪",
+  "key_insights": ["简体中文洞察 1", "简体中文洞察 2", "简体中文洞察 3"],
+  "hot_sectors": ["热门板块 1", "热门板块 2"],
+  "risk_alerts": ["风险警告 1", "风险警告 2"],
   "overall_sentiment": "bullish|bearish|neutral"
 }}
 """
@@ -103,7 +106,7 @@ Based on this data, provide a concise analysis in JSON format:
                     json={
                         "model": "deepseek-chat",
                         "messages": [
-                            {"role": "system", "content": "You are a professional crypto market analyst. Return analysis in JSON format only."},
+                            {"role": "system", "content": "You are a professional crypto market analyst working for OKX. You MUST respond in Simplified Chinese (简体中文). Return analysis in JSON format only."},
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": 0.3,
@@ -247,12 +250,15 @@ You are a professional cryptocurrency market analyst. Analyze the following cryp
 - BTC Dominance: {btc_dominance:.1f}%
 - ETH Dominance: {eth_dominance:.1f}%
 
-Based on this data, provide a concise analysis in JSON format:
+Based on this data, provide a concise analysis in JSON format.
+
+**IMPORTANT: You MUST respond in Simplified Chinese (简体中文) only!**
+
 {{
-  "market_pulse": "2-3 sentence summary of overall crypto market sentiment",
-  "key_insights": ["insight 1", "insight 2", "insight 3"],
-  "hot_sectors": ["sector 1", "sector 2"],
-  "risk_alerts": ["risk 1", "risk 2"],
+  "market_pulse": "2-3 句简体中文总结整体加密市场情绪",
+  "key_insights": ["简体中文洞察 1", "简体中文洞察 2", "简体中文洞察 3"],
+  "hot_sectors": ["热门板块 1", "热门板块 2"],
+  "risk_alerts": ["风险警告 1", "风险警告 2"],
   "overall_sentiment": "bullish|bearish|neutral"
 }}
 """
@@ -267,7 +273,7 @@ Based on this data, provide a concise analysis in JSON format:
                     json={
                         "model": "deepseek-chat",
                         "messages": [
-                            {"role": "system", "content": "You are a professional crypto market analyst. Return analysis in JSON format only."},
+                            {"role": "system", "content": "You are a professional crypto market analyst working for OKX. You MUST respond in Simplified Chinese (简体中文). Return analysis in JSON format only."},
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": 0.3,

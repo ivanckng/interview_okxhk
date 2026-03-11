@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '../types/chat';
-import { suggestedQuestions, generateAIResponse, formatTime } from '../data/chatData';
-import { 
-  MessageSquare, 
-  X, 
-  Send, 
-  Bot, 
+import { suggestedQuestions, formatTime } from '../data/chatData';
+import {
+  MessageSquare,
+  X,
+  Send,
+  Bot,
   User,
   Loader2
 } from 'lucide-react';
@@ -16,12 +16,13 @@ export const ChatBot = () => {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm your Crypto Copilot.\n\nAsk me about:\n• Prices\n• News\n• Exchange updates\n• Market analysis",
+      content: "Hello! I'm your OKX Crypto Pulse Assistant.\n\nI can help you with:\n• Market analysis & trends\n• Crypto news & regulations\n• Exchange announcements\n• Price data insights\n\nI'll be honest when I don't have access to real-time data. Let's explore the markets together!",
       timestamp: new Date().toISOString(),
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [suggested, setSuggested] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -49,16 +50,47 @@ export const ChatBot = () => {
     setInputValue('');
     setIsTyping(true);
 
-    setTimeout(() => {
+    try {
+      // Call backend Qwen API
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: content.trim(),
+          context: messages.slice(-5), // Last 5 messages for context
+          page_context: 'general'
+        }),
+      });
+
+      const data = await response.json();
+      
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: generateAIResponse(content.trim()),
+        content: data.message,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setMessages(prev => [...prev, aiResponse]);
+      
+      // Update suggested questions
+      if (data.suggested_questions && data.suggested_questions.length > 0) {
+        setSuggested(data.suggested_questions);
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      const aiResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: "Sorry, I'm having trouble connecting to the server. Please try again.",
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, aiResponse]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -66,10 +98,6 @@ export const ChatBot = () => {
       e.preventDefault();
       handleSend();
     }
-  };
-
-  const handleSuggestedQuestion = (question: string) => {
-    handleSend(question);
   };
 
   return (
@@ -185,13 +213,13 @@ export const ChatBot = () => {
             <div className="px-3 py-2 border-t border-okx-border flex-shrink-0">
               <p className="text-[10px] text-okx-text-muted mb-1.5">Suggested:</p>
               <div className="flex flex-wrap gap-1.5">
-                {suggestedQuestions.slice(0, 3).map((q) => (
+                {(suggested.length > 0 ? suggested : suggestedQuestions.slice(0, 3).map(q => q.text)).slice(0, 3).map((q, idx) => (
                   <button
-                    key={q.id}
-                    onClick={() => handleSuggestedQuestion(q.text)}
+                    key={idx}
+                    onClick={() => handleSend(q)}
                     className="text-[10px] bg-black border border-okx-border hover:border-white text-okx-text-secondary px-2 py-1 rounded transition-all"
                   >
-                    {q.text}
+                    {q}
                   </button>
                 ))}
               </div>

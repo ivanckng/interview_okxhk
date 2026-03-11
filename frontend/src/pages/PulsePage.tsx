@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
-import { api, getTrendColor } from '../services/api';
+import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   translatePulseSummary,
@@ -8,6 +8,7 @@ import {
   translateTrendPrediction,
   translateProcessedNews,
 } from '../services/apiTranslation';
+import * as cacheService from '../services/cache';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews } from '../services/api';
 
 
@@ -20,6 +21,14 @@ export const PulsePage = () => {
   const [latestNews, setLatestNews] = useState<ProcessedNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(true);
+
+  // 初始化時從緩存讀取數據
+  useEffect(() => {
+    const cachedSummary = cacheService.getCache<PulseSummary>('pulse');
+    const cachedRecs = cacheService.getCache<{ recommendations: PulseRecommendation[] }>('pulseRecommendations');
+    if (cachedSummary) setPulseSummary(cachedSummary);
+    if (cachedRecs) setRecommendations(cachedRecs.recommendations || []);
+  }, []);
 
   // Fetch all pulse data (including comprehensive analysis from 4 pages)
   const fetchPulseData = async (showLoading = true) => {
@@ -44,7 +53,7 @@ export const PulsePage = () => {
       // Use comprehensive analysis if available, otherwise use individual APIs
       if (comprehensiveData?.comprehensive_analysis) {
         const analysis = comprehensiveData.comprehensive_analysis;
-        setPulseSummary({
+        let summaryData = {
           market_pulse: analysis.market_pulse,
           key_insights: analysis.key_insights,
           hot_sectors: analysis.hot_sectors,
@@ -52,7 +61,15 @@ export const PulsePage = () => {
           trend_prediction: analysis.trend_prediction,
           action_items: analysis.action_items,
           risk_alerts: analysis.risk_alerts,
-        });
+        };
+        
+        // 翻譯並保存 Pulse Summary
+        if (language === 'zh') {
+          summaryData = await translatePulseSummary(summaryData, 'zh');
+        }
+        setPulseSummary(summaryData);
+        cacheService.setCache('pulse', summaryData);
+        
         // Fetch recommendations separately
         const recData = await api.getPulseRecommendations();
         let translatedRecs = recData.recommendations;
@@ -60,6 +77,8 @@ export const PulsePage = () => {
           translatedRecs = await translatePulseRecommendations(recData.recommendations, 'zh');
         }
         setRecommendations(translatedRecs);
+        cacheService.setCache('pulseRecommendations', { recommendations: translatedRecs });
+        
         // Use comprehensive trends - set null as we're using the summary directly
         setTrends(null);
       } else {
@@ -79,10 +98,14 @@ export const PulsePage = () => {
           setPulseSummary(translatedSummary);
           setRecommendations(translatedRecs);
           setTrends(translatedTrends);
+          cacheService.setCache('pulse', translatedSummary);
+          cacheService.setCache('pulseRecommendations', { recommendations: translatedRecs });
         } else {
           setPulseSummary(summaryData);
           setRecommendations(recData.recommendations);
           setTrends(trendsData);
+          cacheService.setCache('pulse', summaryData);
+          cacheService.setCache('pulseRecommendations', { recommendations: recData.recommendations });
         }
       }
 

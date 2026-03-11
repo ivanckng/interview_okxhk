@@ -17,6 +17,10 @@ pydantic>=2.5.0
 
 # Cache
 aiocache>=0.12.0
+redis>=5.0.0
+
+# Scheduler
+APScheduler>=3.10.0
 
 # Utilities
 python-dateutil>=2.8.0
