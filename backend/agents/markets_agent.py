@@ -105,8 +105,8 @@ class MarketsDataAggregator:
                 }
 
                 # Call AI agent to analyze the data
-                from agents.deepseek_agent import get_deepseek_agent
-                agent = get_deepseek_agent()
+                from agents.news_agent import get_deepseek_markets_agent
+                agent = get_deepseek_markets_agent()
                 ai_analysis = await agent.analyze_markets(aggregated_data)
 
                 # Cache the COMPLETE result (data + AI analysis) for 10 minutes

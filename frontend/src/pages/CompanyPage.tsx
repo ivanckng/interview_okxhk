@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import type { Exchange, AnnouncementType } from '../types/company';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { useLanguage } from '../contexts/LanguageContext';
+import * as cacheService from '../services/cache';
 
 import {
   exchanges,
@@ -128,6 +129,25 @@ export const CompanyPage = () => {
     keyPoints: [],
   };
 
+  // 初始化时从缓存读取 AI 分析结果
+  useEffect(() => {
+    const cached = cacheService.getCache<any>('competitorsHighlight');
+    if (cached && cached.ai_analysis && cached.ai_analysis.summary) {
+      const aiAnalysis = cached.ai_analysis;
+      const highlightData = {
+        title: language === 'zh' ? '智能竞争专家分析' : 'Intelligent Competitor Analysis',
+        summary: aiAnalysis.summary,
+        trend: (aiAnalysis.overall_trend === 'bullish' ? 'up' :
+               aiAnalysis.overall_trend === 'bearish' ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
+        trendLabel: aiAnalysis.trend_label || (language === 'zh' ? '分析完成' : 'Analyzed'),
+        keyPoints: aiAnalysis.key_points?.slice(0, 4) || [],
+      };
+      setHighlight(highlightData);
+      setAnalyzingAI(false);
+      console.log('[CompanyPage] Loaded AI analysis from cache');
+    }
+  }, [language]);
+
   // Fetch AI analysis of competitor data (every 10 minutes)
   useEffect(() => {
     const hasData = bybitAnnouncements.length > 0 || binanceAnnouncements.length > 0 || bitgetAnnouncements.length > 0;
@@ -224,7 +244,7 @@ export const CompanyPage = () => {
           }
 
           const highlightData = {
-            title: language === 'zh' ? 'AI 竞对分析' : 'AI Competitor Analysis',
+            title: language === 'zh' ? '智能竞争专家分析' : 'Intelligent Competitor Analysis',
             summary: aiAnalysis.summary,
             trend: (aiAnalysis.overall_trend === 'bullish' ? 'up' :
                    aiAnalysis.overall_trend === 'bearish' ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
@@ -232,6 +252,9 @@ export const CompanyPage = () => {
             keyPoints: aiAnalysis.key_points?.slice(0, 4) || [],
           };
           setHighlight(highlightData);
+          
+          // 保存到缓存
+          cacheService.setCache('competitorsHighlight', { ai_analysis: aiAnalysis }, 600);
         } else {
           // AI analysis failed, use fallback
           setHighlight(null);
