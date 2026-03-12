@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { NewsCategory, NewsPriority } from '../types/news';
 import {
   newsCategoryColors
@@ -77,6 +77,7 @@ export const NewsPage = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(true);
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
+  const analysisRequestInFlightRef = useRef(false);
 
   // 使用緩存 API Hook
   const {
@@ -93,7 +94,6 @@ export const NewsPage = () => {
   });
 
   // 合併狀態
-  const loading = newsLoading;
   const news = cachedNews || [];
 
   useEffect(() => {
@@ -117,7 +117,8 @@ export const NewsPage = () => {
   // 初始化時從緩存讀取 highlight
   useEffect(() => {
     const cached = cacheService.getCache<HighlightSummary>('newsHighlight');
-    if (cached) {
+    const cacheBehind = cacheService.isCacheBehind('newsHighlight', ['news']);
+    if (cached && !cacheBehind) {
       setHighlight(cached);
     }
   }, []);
@@ -125,6 +126,10 @@ export const NewsPage = () => {
   // ==================== AI 分析 - 10 分钟定时刷新 + 可见性刷新 ====================
   useEffect(() => {
     const fetchAIAnalysis = async (forceRefresh = false) => {
+      if (analysisRequestInFlightRef.current) {
+        return;
+      }
+
       // 使用 cachedNews 而不是 news
       if (!cachedNews || cachedNews.length === 0) return;
 
@@ -134,8 +139,9 @@ export const NewsPage = () => {
         const cachedAt = cacheService.getCacheTimestamp('newsHighlight');
         const now = Date.now();
         const isExpired = !cachedAt || (now - cachedAt) > 600000; // 10 分钟
+        const cacheBehind = cacheService.isCacheBehind('newsHighlight', ['news']);
 
-        if (cached && !isExpired) {
+        if (cached && !isExpired && !cacheBehind) {
           setHighlight(cached);
           setAnalysisLoading(false);
           console.log('[NewsPage] Using cached AI analysis');
@@ -143,6 +149,7 @@ export const NewsPage = () => {
         }
       }
 
+      analysisRequestInFlightRef.current = true;
       setAnalysisLoading(true);
       try {
         console.log('[News AI] Fetching analysis with', cachedNews.length, 'news items, language:', language);
@@ -188,6 +195,7 @@ export const NewsPage = () => {
           setHighlight(cached);
         }
       } finally {
+        analysisRequestInFlightRef.current = false;
         setAnalysisLoading(false);
       }
     };
@@ -198,19 +206,8 @@ export const NewsPage = () => {
     // 定时刷新：每 10 分钟
     const interval = setInterval(() => fetchAIAnalysis(false), 600000);
 
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[NewsPage] Page visible, checking cache for AI analysis');
-        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [cachedNews, language]);
 
@@ -238,14 +235,6 @@ export const NewsPage = () => {
 
     return filtered;
   }, [news, selectedCategory, selectedPriority]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -326,7 +315,7 @@ export const NewsPage = () => {
       <div className="space-y-3">
         {filteredNews.length === 0 ? (
           <div className="text-center py-12 text-okx-text-muted">
-            {language === 'zh' ? '暂无符合筛选条件的新闻' : 'No news found for the selected filters.'}
+            {language === 'zh' ? '正在获取相关新闻。' : 'Fetching related news.'}
           </div>
         ) : (
           filteredNews.map((news) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Zap, Globe, Loader2, Package } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -7,38 +7,6 @@ import { translateNewsArticles, translateStockIndices, translateCommodities, tra
 import * as cacheService from '../services/cache';
 import type { HighlightSummary } from '../services/api';
 import { apiUrl } from '../services/config';
-
-// 地区股指 Mock 数据（fallback）
-const stockIndicesMock = {
-  us: [
-    { name: "S&P 500", symbol: "^GSPC", value: 6740.02, change: -90.69, change_percent: -1.33, timestamp: "2026-03-09 00:38 EDT" },
-    { name: "Dow Jones", symbol: "^DJI", value: 47501.55, change: -453.19, change_percent: -0.95, timestamp: "2026-03-09 00:38 EDT" },
-    { name: "Nasdaq", symbol: "^IXIC", value: 22387.68, change: -361.31, change_percent: -1.59, timestamp: "2026-03-09 00:38 EDT" },
-  ],
-  cn: [
-    { name: "Shanghai Composite", symbol: "000001.SS", value: 4077.68, change: -47.37, change_percent: -1.15, timestamp: "2026-03-09 12:38 CST" },
-    { name: "Shenzhen Component", symbol: "399001.SZ", value: 13868.86, change: -308.25, change_percent: -2.17, timestamp: "2026-03-09 12:38 CST" },
-    { name: "ChiNext", symbol: "399006.SZ", value: 3151.05, change: -80.79, change_percent: -2.5, timestamp: "2026-03-09 12:39 CST" },
-  ],
-  hk: [
-    { name: "Hang Seng", symbol: "^HSI", value: 25101.04, change: -656.25, change_percent: -2.55, timestamp: "2026-03-09 12:39 HKT" },
-  ],
-  uk: [
-    { name: "FTSE 100", symbol: "^FTSE", value: 10284.8, change: -129.14, change_percent: -1.24, timestamp: "2026-03-09 04:39 GMT" },
-  ],
-  eu: [
-    { name: "Euro Stoxx 50", symbol: "^STOXX50E", value: 5000.0, change: -50.0, change_percent: -0.99, timestamp: "2026-03-09 05:39 CET" },
-    { name: "DAX", symbol: "^GDAXI", value: 20000.0, change: -200.0, change_percent: -0.99, timestamp: "2026-03-09 05:39 CET" },
-    { name: "CAC 40", symbol: "^FCHI", value: 7500.0, change: -75.0, change_percent: -0.99, timestamp: "2026-03-09 05:39 CET" },
-  ],
-  jp: [
-    { name: "Nikkei 225", symbol: "^N225", value: 39000.0, change: -390.0, change_percent: -0.99, timestamp: "2026-03-09 13:39 JST" },
-  ],
-  kr: [
-    { name: "KOSPI", symbol: "^KS11", value: 2600.0, change: -26.0, change_percent: -0.99, timestamp: "2026-03-09 13:39 KST" },
-    { name: "KOSDAQ", symbol: "^KQ11", value: 850.0, change: -8.5, change_percent: -0.99, timestamp: "2026-03-09 13:39 KST" },
-  ],
-};
 
 // 地区配置
 const regions = [
@@ -59,7 +27,7 @@ const staticTranslations = {
     breakingNews: 'Breaking News',
     stockIndices: 'Stock Indices',
     lastUpdate: 'Last updated',
-    noData: 'No relevant macro news available',
+    noData: 'Fetching related macro news...',
     indicators: {
       gdpAnnual: 'GDP Annual',
       gdpQuarterly: 'GDP Quarterly',
@@ -78,7 +46,7 @@ const staticTranslations = {
     breakingNews: '突发新闻',
     stockIndices: '地区股指',
     lastUpdate: '最后更新',
-    noData: '暂无相关宏观新闻',
+    noData: '正在获取相关宏观新闻。',
     indicators: {
       gdpAnnual: '年度 GDP',
       gdpQuarterly: '季度 GDP',
@@ -235,26 +203,34 @@ const IndexCard = ({ index }: { index: { name: string; symbol: string; value: nu
 export const MarketsPage = () => {
   const { language } = useLanguage();
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(true);
   const [selectedRegion, setSelectedRegion] = useState<string>('us');
   const [breakingNews, setBreakingNews] = useState<any[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [economyData, setEconomyData] = useState<{ us: any; cn: any }>({ us: null, cn: null });
-  const [economyLoading, setEconomyLoading] = useState(false);
+  const [, setEconomyLoading] = useState(false);
   const [stockIndices, setStockIndices] = useState<Record<string, any[]>>({});
-  const [indicesLoading, setIndicesLoading] = useState(false);
+  const [, setIndicesLoading] = useState(false);
   const [commodities, setCommodities] = useState<any[]>([]);
-  const [commoditiesLoading, setCommoditiesLoading] = useState(false);
+  const [, setCommoditiesLoading] = useState(false);
   const [currencies, setCurrencies] = useState<any[]>([]);
-  const [currenciesLoading, setCurrenciesLoading] = useState(false);
+  const [, setCurrenciesLoading] = useState(false);
   const [lastUpdated] = useState<Date | null>(null);
+  const analysisRequestInFlightRef = useRef(false);
+  const breakingNewsRequestInFlightRef = useRef(false);
 
   // 初始化时从缓存读取所有可用数据
   useEffect(() => {
     // 读取 AI 分析缓存
     const cachedHighlight = cacheService.getCache<HighlightSummary>('marketHighlight');
-    if (cachedHighlight) {
+    const cacheBehind = cacheService.isCacheBehind('marketHighlight', [
+      'breakingNews',
+      'stockIndices',
+      'commodities',
+      'currencies',
+    ]);
+    if (cachedHighlight && !cacheBehind) {
       setHighlight(cachedHighlight);
       setAnalysisLoading(false);
       setLoading(false);
@@ -273,16 +249,26 @@ export const MarketsPage = () => {
   // ==================== AI 分析 - 10 分钟定时 + 可见性刷新 ====================
   useEffect(() => {
     const fetchAIAnalysis = async (forceRefresh = false) => {
+      if (analysisRequestInFlightRef.current) {
+        return;
+      }
+
       setAnalysisLoading(true);
       try {
         // 检查前端缓存 (10 分钟)，强制刷新时跳过
-        if (!forceRefresh) {
-          const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
-          const cachedAt = cacheService.getCacheTimestamp('marketHighlight');
-          const now = Date.now();
-          const isExpired = !cachedAt || (now - cachedAt) > 600000; // 10 分钟
+      if (!forceRefresh) {
+        const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
+        const cachedAt = cacheService.getCacheTimestamp('marketHighlight');
+        const now = Date.now();
+        const isExpired = !cachedAt || (now - cachedAt) > 600000; // 10 分钟
+        const cacheBehind = cacheService.isCacheBehind('marketHighlight', [
+          'breakingNews',
+          'stockIndices',
+          'commodities',
+          'currencies',
+        ]);
 
-          if (cached && !isExpired) {
+          if (cached && !isExpired && !cacheBehind) {
             setHighlight(cached);
             setAnalysisLoading(false);
             setLoading(false);
@@ -291,6 +277,7 @@ export const MarketsPage = () => {
           }
         }
 
+        analysisRequestInFlightRef.current = true;
         // 从后端获取
         const response = await fetch(apiUrl('/api/markets/analysis'));
         const data = await response.json();
@@ -333,10 +320,17 @@ export const MarketsPage = () => {
         console.error('[MarketsPage] Failed to fetch AI analysis:', err);
         // 使用缓存数据作为 fallback
         const cached = cacheService.getCache<HighlightSummary>('marketHighlight');
-        if (cached) {
+        const cacheBehind = cacheService.isCacheBehind('marketHighlight', [
+          'breakingNews',
+          'stockIndices',
+          'commodities',
+          'currencies',
+        ]);
+        if (cached && !cacheBehind) {
           setHighlight(cached);
         }
       } finally {
+        analysisRequestInFlightRef.current = false;
         setAnalysisLoading(false);
         setLoading(false);
       }
@@ -348,25 +342,18 @@ export const MarketsPage = () => {
     // 定时刷新：每 10 分钟
     const interval = setInterval(() => fetchAIAnalysis(false), 600000);
 
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[MarketsPage] Page visible, checking cache for AI analysis');
-        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [language]);
 
   // ==================== 突发新闻 - 30 分钟缓存 + 10 分钟检查 ====================
   useEffect(() => {
     const fetchBreakingNews = async (forceRefresh = false) => {
+      if (breakingNewsRequestInFlightRef.current) {
+        return;
+      }
+
       // 检查前端缓存 (30 分钟)，强制刷新时跳过
       if (!forceRefresh) {
         const cached = cacheService.getCache<any[]>('breakingNews');
@@ -382,6 +369,7 @@ export const MarketsPage = () => {
         }
       }
 
+      breakingNewsRequestInFlightRef.current = true;
       try {
         const response = await fetch(apiUrl('/api/news/breaking'));
         const data = await response.json();
@@ -399,6 +387,7 @@ export const MarketsPage = () => {
       } catch (err) {
         console.error('Failed to fetch breaking news:', err);
       } finally {
+        breakingNewsRequestInFlightRef.current = false;
         setNewsLoading(false);
       }
     };
@@ -408,19 +397,8 @@ export const MarketsPage = () => {
 
     const interval = setInterval(() => fetchBreakingNews(false), 600000);
 
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[MarketsPage] Page visible, checking cache for breaking news');
-        fetchBreakingNews(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [language]);
 
@@ -489,8 +467,7 @@ export const MarketsPage = () => {
         setStockIndices(regions);
       } catch (err) {
         console.error('Failed to fetch stock indices:', err);
-        // Fallback to mock data
-        setStockIndices(stockIndicesMock);
+        setStockIndices({});
       } finally {
         setIndicesLoading(false);
       }
@@ -596,15 +573,7 @@ export const MarketsPage = () => {
     return () => clearInterval(interval);
   }, [language]);
 
-  if (loading || newsLoading || economyLoading || indicesLoading || commoditiesLoading || currenciesLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
-
-  const currentIndices = stockIndices[selectedRegion] || stockIndicesMock[selectedRegion as keyof typeof stockIndicesMock] || [];
+  const currentIndices = stockIndices[selectedRegion] || [];
   const indicators = t.indicators;
   const countries = t.countries;
 
@@ -843,7 +812,7 @@ export const MarketsPage = () => {
             ))
           ) : (
             <div className="col-span-full text-center py-12 text-okx-text-muted">
-              {language === 'zh' ? '暂无相关股指数据' : 'No stock indices data available'}
+              {language === 'zh' ? '正在获取相关股指数据。' : 'Fetching related stock indices data.'}
             </div>
           )}
         </div>
@@ -881,7 +850,7 @@ export const MarketsPage = () => {
             ))
           ) : (
             <div className="col-span-full text-center py-12 text-okx-text-muted">
-              {language === 'zh' ? '暂无相关大宗商品数据' : 'No commodities data available'}
+              {language === 'zh' ? '正在获取相关大宗商品数据。' : 'Fetching related commodities data.'}
             </div>
           )}
         </div>
@@ -930,7 +899,7 @@ export const MarketsPage = () => {
             ))
           ) : (
             <div className="col-span-full text-center py-12 text-okx-text-muted">
-              {language === 'zh' ? '暂无相关汇率数据' : 'No currency rates data available'}
+              {language === 'zh' ? '正在获取相关汇率数据。' : 'Fetching related currency rates.'}
             </div>
           )}
         </div>

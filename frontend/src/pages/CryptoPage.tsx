@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Loader2, Globe } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Globe } from 'lucide-react';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -73,11 +73,11 @@ export const CryptoPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [analysisLoading, setAnalysisLoading] = useState(true);
   const [highlight, setHighlight] = useState<HighlightSummary | null>(null);
+  const analysisRequestInFlightRef = useRef(false);
 
   // 使用緩存 API Hook - 加密貨幣價格（2 分鐘 TTL）
   const {
     data: cryptoData,
-    loading: cryptoLoading,
     refresh: refreshCrypto,
   } = useCachedAPI<{ coins: CryptoCoin[]; global: any; highlight: HighlightSummary }>({
     module: 'crypto',
@@ -98,7 +98,8 @@ export const CryptoPage = () => {
   // 初始化时从缓存读取 highlight
   useEffect(() => {
     const cached = cacheService.getCache<HighlightSummary>('cryptoHighlight');
-    if (cached) {
+    const cacheBehind = cacheService.isCacheBehind('cryptoHighlight', ['crypto']);
+    if (cached && !cacheBehind) {
       setHighlight(cached);
       setAnalysisLoading(false);
     }
@@ -107,14 +108,19 @@ export const CryptoPage = () => {
   // ==================== AI 分析 - 15 分钟定时 + 可见性刷新 ====================
   useEffect(() => {
     const fetchAIAnalysis = async (forceRefresh = false) => {
+      if (analysisRequestInFlightRef.current) {
+        return;
+      }
+
       // 检查前端缓存 (15 分钟)，强制刷新时跳过
       if (!forceRefresh) {
         const cached = cacheService.getCache<HighlightSummary>('cryptoHighlight');
         const cachedAt = cacheService.getCacheTimestamp('cryptoHighlight');
         const now = Date.now();
         const isExpired = !cachedAt || (now - cachedAt) > 900000; // 15 分钟
+        const cacheBehind = cacheService.isCacheBehind('cryptoHighlight', ['crypto']);
 
-        if (cached && !isExpired) {
+        if (cached && !isExpired && !cacheBehind) {
           setHighlight(cached);
           setAnalysisLoading(false);
           console.log('[CryptoPage] Using cached AI analysis');
@@ -122,6 +128,7 @@ export const CryptoPage = () => {
         }
       }
 
+      analysisRequestInFlightRef.current = true;
       setAnalysisLoading(true);
       try {
         console.log('[Crypto AI] Fetching analysis, language:', language);
@@ -162,6 +169,7 @@ export const CryptoPage = () => {
           setHighlight(cached);
         }
       } finally {
+        analysisRequestInFlightRef.current = false;
         setAnalysisLoading(false);
       }
     };
@@ -172,26 +180,13 @@ export const CryptoPage = () => {
     // 定时刷新：每 15 分钟
     const interval = setInterval(() => fetchAIAnalysis(false), 900000);
 
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[CryptoPage] Page visible, checking cache for AI analysis');
-        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [language]);
 
   const coins = cryptoData?.coins || [];
   const globalData = cryptoData?.global || null;
-  const loading = cryptoLoading;
-
   const filteredCryptos = coins.filter((crypto: CryptoCoin) => {
     const matchesSearch =
       crypto.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -205,7 +200,7 @@ export const CryptoPage = () => {
       searchPlaceholder: 'Search by name or symbol...',
       source: 'Source: CoinGecko',
       updated: 'Updated (HKT):',
-      noData: 'No cryptocurrencies found.',
+      noData: 'Fetching related cryptocurrencies...',
       aiAnalysis: 'AI Crypto Analysis',
       analyzing: 'Analysis in progress...',
     },
@@ -214,19 +209,11 @@ export const CryptoPage = () => {
       searchPlaceholder: '搜索名称或符号...',
       source: '来源：CoinGecko',
       updated: '更新时间 (HKT):',
-      noData: '未找到加密货币。',
+      noData: '正在获取相关加密货币。',
       aiAnalysis: 'AI 加密货币分析',
       analyzing: '分析进行中...',
     },
   }[language];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>

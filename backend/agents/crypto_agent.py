@@ -25,7 +25,7 @@ class CryptoDataAggregator:
     def _should_refresh_cache(self, cached_data: Any) -> bool:
         """
         Check if cache should be refreshed
-        Refresh every 10 minutes
+        Refresh every 5 minutes to stay aligned with /api/crypto/prices.
         """
         if not cached_data:
             return True
@@ -38,8 +38,7 @@ class CryptoDataAggregator:
             cached_time = datetime.fromisoformat(cached_at)
             now = datetime.utcnow()
             
-            # Refresh every 10 minutes
-            return (now - cached_time).total_seconds() > 600
+            return (now - cached_time).total_seconds() > 300
         except:
             return True
 
@@ -49,7 +48,7 @@ class CryptoDataAggregator:
         """
         cache_key = self._get_cache_key()
         
-        # Check cache first (10 minute TTL)
+        # Check cache first (5 minute TTL)
         cached = self._cache.get(cache_key)
         if cached and isinstance(cached, dict) and not self._should_refresh_cache(cached):
             print(f"✅ Using cached crypto data for AI analysis")
@@ -79,8 +78,7 @@ class CryptoDataAggregator:
                     "refresh_interval": "10 minutes",
                 }
                 
-                # Cache for 10 minutes
-                self._cache.set(cache_key, aggregated_data, ttl=600)
+                self._cache.set(cache_key, aggregated_data, ttl=300)
                 print(f"✅ Cached crypto data for AI analysis")
                 
                 return aggregated_data

@@ -21,11 +21,16 @@ export const PulsePage = () => {
   const [recommendations, setRecommendations] = useState<PulseRecommendation[]>([]);
   const [trends, setTrends] = useState<TrendPrediction | null>(null);
   const [latestNews, setLatestNews] = useState<ProcessedNews[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(true);
+  const requestInFlightRef = useRef(false);
 
   // ==================== Pulse 综合数据获取 ====================
   const fetchPulseData = async (forceRefresh = false) => {
+    if (requestInFlightRef.current) {
+      return;
+    }
+
     // 检查缓存是否过期 (20 分钟)，强制刷新时跳过
     if (!forceRefresh) {
       const cached = cacheService.getCache<any>('pulseComprehensive');
@@ -57,6 +62,7 @@ export const PulsePage = () => {
       }
     }
 
+    requestInFlightRef.current = true;
     setAnalysisLoading(true);
     setLoading(true);
 
@@ -166,6 +172,7 @@ export const PulsePage = () => {
         setRecommendations(cachedRecs.recommendations || []);
       }
     } finally {
+      requestInFlightRef.current = false;
       setLoading(false);
       setAnalysisLoading(false);
     }
@@ -181,19 +188,8 @@ export const PulsePage = () => {
     // 定时刷新：每 20 分钟
     const interval = setInterval(() => fetchPulseData(false), 1200000);
 
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[PulsePage] Page visible, checking cache for comprehensive analysis');
-        fetchPulseData(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -243,14 +239,6 @@ export const PulsePage = () => {
     }
     fetchPulseData(false);
   }, [language]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -450,7 +438,7 @@ export const PulsePage = () => {
               </div>
             ) : (
               <div className="px-4 py-6 text-center text-okx-text-muted text-sm">
-                {language === 'zh' ? '暂无 AI 推荐' : 'No AI recommendations available'}
+                {language === 'zh' ? '正在获取相关 AI 推荐。' : 'Fetching related AI recommendations.'}
               </div>
             )}
           </div>

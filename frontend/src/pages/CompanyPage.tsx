@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { Exchange, AnnouncementType } from '../types/company';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -14,7 +14,6 @@ import {
 } from '../data/companyData';
 import {
   ExternalLink,
-  Loader2,
 } from 'lucide-react';
 
 // 影响程度配置（AI分析结果）
@@ -36,7 +35,7 @@ const impactConfig = {
 // 固定的中英文翻译
 const staticTranslations = {
   en: {
-    noAnnouncements: 'No announcements found.',
+    noAnnouncements: 'Fetching related announcements.',
     bybitSource: 'Bybit: Official API',
     binanceSource: 'Binance: RSS Feed',
     bitgetSource: 'Bitget: API',
@@ -57,7 +56,7 @@ const staticTranslations = {
     },
   },
   zh: {
-    noAnnouncements: '暂无公告。',
+    noAnnouncements: '正在获取相关公告。',
     bybitSource: 'Bybit: 官方 API',
     binanceSource: 'Binance: RSS Feed',
     bitgetSource: 'Bitget: API',
@@ -105,7 +104,7 @@ export const CompanyPage = () => {
   const [binanceUpdateTime, setBinanceUpdateTime] = useState<string>('');
   const [bitgetAnnouncements, setBitgetAnnouncements] = useState<ExchangeAnnouncement[]>([]);
   const [bitgetUpdateTime, setBitgetUpdateTime] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [analyzingAI, setAnalyzingAI] = useState(true);
   const [highlight, setHighlight] = useState<{
     title: string;
@@ -119,22 +118,32 @@ export const CompanyPage = () => {
   const [selectedCompany, setSelectedCompany] = useState<Exchange | 'all'>('all');
   const [selectedImpact, setSelectedImpact] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
   const [selectedTypes, setSelectedTypes] = useState<AnnouncementType[]>([]);
+  const announcementsRequestInFlightRef = useRef(false);
 
   const t = staticTranslations[language];
+  const hasAnyAnnouncements =
+    bybitAnnouncements.length > 0 ||
+    binanceAnnouncements.length > 0 ||
+    bitgetAnnouncements.length > 0;
 
   // Fallback highlight data (only shown when AI analysis fails)
   const fallbackHighlight = {
     title: language === 'zh' ? '交易所情报' : 'Exchange Intelligence',
-    summary: language === 'zh' ? '暂无分析数据' : 'No analysis data available',
+    summary: language === 'zh' ? '正在获取相关竞对分析。' : 'Fetching related competitor analysis.',
     trend: 'neutral' as const,
-    trendLabel: language === 'zh' ? '暂无数据' : 'N/A',
+    trendLabel: language === 'zh' ? '正在获取数据' : 'Fetching data',
     keyPoints: [],
   };
 
   // 初始化时从缓存读取 AI 分析结果
   useEffect(() => {
     const cached = cacheService.getCache<any>('competitorsHighlight');
-    if (cached && cached.ai_analysis && cached.ai_analysis.summary) {
+    const cacheBehind = cacheService.isCacheBehind('competitorsHighlight', [
+      'bybitAnnouncements',
+      'binanceAnnouncements',
+      'bitgetAnnouncements',
+    ]);
+    if (cached && !cacheBehind && cached.ai_analysis && cached.ai_analysis.summary) {
       const aiAnalysis = cached.ai_analysis;
       const highlightData = {
         title: language === 'zh' ? '智能竞争专家分析' : 'Intelligent Competitor Analysis',
@@ -282,7 +291,7 @@ export const CompanyPage = () => {
 
   // Fetch Bybit and Binance real announcements with timeout
   useEffect(() => {
-    const fetchWithTimeout = async (url: string, timeout = 60000) => {
+    const fetchWithTimeout = async (url: string, timeout = 45000) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       const response = await fetch(url, { signal: controller.signal });
@@ -388,12 +397,18 @@ export const CompanyPage = () => {
 
     // Fetch all data independently (don't block UI on single failure)
     const loadAll = (forceRefresh = false) => {
-      setLoading(true);
+      if (announcementsRequestInFlightRef.current) {
+        return;
+      }
+
+      announcementsRequestInFlightRef.current = true;
+      setLoading(!hasAnyAnnouncements);
       Promise.all([
         fetchBybitData(forceRefresh),
         fetchBinanceData(forceRefresh),
         fetchBitgetData(forceRefresh)
       ]).finally(() => {
+        announcementsRequestInFlightRef.current = false;
         setLoading(false);
       });
     };
@@ -409,22 +424,10 @@ export const CompanyPage = () => {
       loadAll(false);
     }
 
-    // 定时刷新：每 10 分钟
     const interval = setInterval(() => loadAll(false), 600000);
-
-    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[CompanyPage] Page visible, checking cache for announcements');
-        loadAll(false); // 优先走缓存，缓存过期才请求 API
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [language]);
 
@@ -529,14 +532,6 @@ export const CompanyPage = () => {
 
   // All announcement types for the type filter
   const allTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change', 'market'];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-white animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>

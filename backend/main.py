@@ -438,9 +438,13 @@ async def chat(request: ChatRequest):
             crypto_data["global"] = cached_crypto_prices.get("global", {})
             crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
         
-        cached_crypto_analysis = get_highlight_cache().get("crypto_highlight")
-        if cached_crypto_analysis:
-            crypto_data["ai_analysis"] = {"market_pulse": cached_crypto_analysis.get("summary", "")}
+        cached_crypto_analysis = get_market_cache().get("latest_crypto_analysis")
+        if cached_crypto_analysis and isinstance(cached_crypto_analysis, dict):
+            crypto_data["ai_analysis"] = cached_crypto_analysis.get("analysis", {})
+        else:
+            cached_crypto_highlight = get_highlight_cache().get("crypto_highlight")
+            if cached_crypto_highlight:
+                crypto_data["ai_analysis"] = {"market_pulse": cached_crypto_highlight.get("summary", "")}
 
         # ========== Prepare data context for Qwen ==========
         
@@ -810,16 +814,24 @@ async def get_markets_analysis():
     aggregator = get_markets_aggregator()
     analyst = get_deepseek_markets_agent()
     
-    # Get aggregated data
-    markets_data = await aggregator.aggregate_all_data()
-    
-    # Get AI analysis
-    analysis = await analyst.analyze_markets(markets_data)
-    
+    aggregated_result = await aggregator.aggregate_all_data()
+    if aggregated_result.get("error"):
+        return aggregated_result
+
+    markets_data = aggregated_result.get("markets_data", {})
+    analysis_payload = aggregated_result.get("ai_analysis", {})
+
+    if not analysis_payload:
+        analysis = await analyst.analyze_markets(markets_data)
+        analysis_payload = analysis.get("analysis", {})
+        last_updated = analysis.get("cached_at", "")
+    else:
+        last_updated = aggregated_result.get("cached_at", "")
+
     return {
         "markets_data": markets_data,
-        "ai_analysis": analysis.get("analysis", {}),
-        "last_updated": analysis.get("cached_at", ""),
+        "ai_analysis": analysis_payload,
+        "last_updated": last_updated,
         "refresh_interval": "10 minutes",
     }
 
@@ -833,12 +845,21 @@ async def get_crypto_analysis():
     aggregator = get_crypto_aggregator()
     analyst = get_deepseek_crypto_agent()
     
-    # Get aggregated data
     crypto_data = await aggregator.aggregate_all_data()
-    
-    # Get AI analysis
+    if crypto_data.get("error"):
+        return crypto_data
+
     analysis = await analyst.analyze_crypto(crypto_data)
-    
+    get_market_cache().set(
+        "latest_crypto_analysis",
+        {
+            "analysis": analysis.get("analysis", {}),
+            "crypto_data": crypto_data,
+            "cached_at": analysis.get("cached_at", ""),
+        },
+        ttl=600,
+    )
+
     return {
         "crypto_data": crypto_data,
         "ai_analysis": analysis.get("analysis", {}),
@@ -1127,7 +1148,7 @@ async def get_pulse_comprehensive(language: str = "zh"):
             crypto_data["global"] = cached_crypto_prices.get("global", {})
             crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
 
-        cached_crypto_analysis = get_market_cache().get("deepseek_crypto_analysis")
+        cached_crypto_analysis = get_market_cache().get("latest_crypto_analysis")
         if cached_crypto_analysis and isinstance(cached_crypto_analysis, dict):
             crypto_data["ai_analysis"] = cached_crypto_analysis.get("analysis", {})
 
@@ -1305,117 +1326,105 @@ async def get_cn_economy_indicators():
 @app.get("/api/exchanges/bybit/announcements")
 async def get_bybit_announcements_api(locale: str = "en-US", limit: int = 20):
     """
-    Get Bybit exchange announcements with AI analysis
-    Real data from Bybit API, analyzed by DeepSeek Agent
+    Get Bybit exchange announcements
+    Real data from Bybit API with cached rule-based prioritization
     
     Args:
         locale: Language locale (en-US, zh-CN)
         limit: Number of announcements (max 100)
     
     Returns:
-        announcements: AI-analyzed Bybit announcements
+        announcements: prioritized Bybit announcements
         source: Data source info
         last_updated: HKT timestamp
     """
     from datetime import datetime, timedelta
     
     client = get_bybit_client()
-    agent = get_competitor_agent()
     
     # Fetch raw announcements
     announcements = client.get_announcements(locale=locale, limit=limit)
-    
-    # Analyze with DeepSeek AI
-    analyzed = await agent.analyze_announcements(announcements)
-    
+
     # Convert to HKT time
     hkt_now = datetime.utcnow() + timedelta(hours=8)
     
     return {
-        "announcements": analyzed,
-        "source": "Bybit Official API + DeepSeek AI",
+        "announcements": announcements,
+        "source": "Bybit Official API",
         "source_url": "https://announcements.bybit.com/",
         "locale": locale,
         "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
-        "count": len(analyzed)
+        "count": len(announcements)
     }
 
 
 @app.get("/api/exchanges/binance/announcements")
 async def get_binance_announcements_api(limit: int = 20, category: str = "all"):
     """
-    Get Binance exchange announcements with AI analysis
-    Real data from Binance RSS feed, analyzed by DeepSeek Agent
+    Get Binance exchange announcements
+    Real data from Binance feed with cached rule-based prioritization
     
     Args:
         limit: Number of announcements
         category: Feed category ('all', 'new_listings', 'latest_news')
     
     Returns:
-        announcements: AI-analyzed Binance announcements
+        announcements: prioritized Binance announcements
         source: Data source info
         last_updated: HKT timestamp
     """
     from datetime import datetime, timedelta
     
     client = get_binance_client()
-    agent = get_competitor_agent()
     
-    # Fetch raw announcements from RSS
+    # Fetch raw announcements from source
     announcements = client.get_announcements(limit=limit, category=category)
-    
-    # Analyze with DeepSeek Agent
-    analyzed = await agent.analyze_binance_announcements(announcements)
-    
+
     # HKT timestamp
     hkt_now = datetime.utcnow() + timedelta(hours=8)
     
     return {
-        "announcements": analyzed,
-        "source": "Binance RSS Feed + DeepSeek AI",
+        "announcements": announcements,
+        "source": "Binance Feed",
         "source_url": "https://www.binance.com/en/support/announcement",
         "category": category,
         "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
-        "count": len(analyzed)
+        "count": len(announcements)
     }
 
 
 @app.get("/api/exchanges/bitget/announcements")
 async def get_bitget_announcements_api(language: str = "en_US", limit: int = 20):
     """
-    Get Bitget exchange announcements with AI analysis
-    Real data from Bitget API, analyzed by DeepSeek Agent
+    Get Bitget exchange announcements
+    Real data from Bitget API with cached rule-based prioritization
     
     Args:
         language: Language code (en_US, zh_CN)
         limit: Number of announcements
     
     Returns:
-        announcements: AI-analyzed Bitget announcements
+        announcements: prioritized Bitget announcements
         source: Data source info
         last_updated: HKT timestamp
     """
     from datetime import datetime, timedelta
     
     client = get_bitget_client()
-    agent = get_competitor_agent()
     
     # Fetch raw announcements from Bitget API
     announcements = client.get_announcements(language=language, limit=limit)
-    
-    # Analyze with DeepSeek Agent
-    analyzed = await agent.analyze_bitget_announcements(announcements)
-    
+
     # HKT timestamp
     hkt_now = datetime.utcnow() + timedelta(hours=8)
     
     return {
-        "announcements": analyzed,
-        "source": "Bitget API + DeepSeek AI",
+        "announcements": announcements,
+        "source": "Bitget API",
         "source_url": "https://www.bitget.com/support/",
         "language": language,
         "last_updated": hkt_now.strftime("%Y-%m-%d %H:%M:%S") + " HKT",
-        "count": len(analyzed)
+        "count": len(announcements)
     }
 
 

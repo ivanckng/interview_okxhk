@@ -209,7 +209,7 @@ class DeepSeekCryptoAgent:
                     "symbol": coin.get("symbol"),
                     "current_price": coin.get("current_price"),
                     "price_change_percentage_24h": coin.get("price_change_percentage_24h"),
-                    "price_change_percentage_7d_in_currency": coin.get("price_change_percentage_7d_in_currency"),
+                    "price_change_percentage_7d": coin.get("price_change_percentage_7d"),
                 }
                 for coin in crypto_data.get("top_coins", [])[:10]
             ],
@@ -253,10 +253,18 @@ class DeepSeekCryptoAgent:
             top_coins = crypto_data.get('top_coins', [])
             global_data = crypto_data.get('global_data', {})
             
-            # Handle nested structure
+            def get_numeric_value(value: Any) -> float:
+                if isinstance(value, (int, float)):
+                    return float(value)
+                if isinstance(value, dict):
+                    usd_value = value.get("usd")
+                    if isinstance(usd_value, (int, float)):
+                        return float(usd_value)
+                return 0.0
+
             if isinstance(global_data, dict):
-                total_market_cap = global_data.get('total_market_cap', {}).get('usd', 0) if isinstance(global_data.get('total_market_cap'), dict) else 0
-                total_volume = global_data.get('total_volume', {}).get('usd', 0) if isinstance(global_data.get('total_volume'), dict) else 0
+                total_market_cap = get_numeric_value(global_data.get('total_market_cap'))
+                total_volume = get_numeric_value(global_data.get('total_volume'))
                 btc_dominance = global_data.get('market_cap_percentage', {}).get('btc', 0) if isinstance(global_data.get('market_cap_percentage'), dict) else 0
                 eth_dominance = global_data.get('market_cap_percentage', {}).get('eth', 0) if isinstance(global_data.get('market_cap_percentage'), dict) else 0
             else:

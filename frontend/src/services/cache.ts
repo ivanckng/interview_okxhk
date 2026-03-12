@@ -34,7 +34,7 @@ export const MODULE_CONFIGS: Record<string, ModuleConfig> = {
   newsHighlight: { key: 'news_highlight', ttl: 60 * 60 }, // 1 小時
   breakingNews: { key: 'breaking_news', ttl: 30 * 60 },   // 30 分鐘 (GNews 配額限制)
   market: { key: 'market', ttl: 10 * 60 },    // 10 分鐘
-  marketHighlight: { key: 'market_highlight', ttl: 30 * 60 }, // 30 分鐘
+  marketHighlight: { key: 'market_highlight_v2', ttl: 30 * 60 }, // 30 分鐘
   stockIndices: { key: 'stock_indices', ttl: 5 * 60 },     // 5 分鐘
   commodities: { key: 'commodities', ttl: 5 * 60 },        // 5 分鐘
   currencies: { key: 'currencies', ttl: 5 * 60 },          // 5 分鐘
@@ -77,6 +77,21 @@ export function getCacheTimestamp(module: string): number | null {
   } catch (error) {
     return null;
   }
+}
+
+/**
+ * Check whether a cache entry is older than any dependency cache entry.
+ */
+export function isCacheBehind(module: string, dependencies: string[]): boolean {
+  const moduleTimestamp = getCacheTimestamp(module);
+  if (!moduleTimestamp) {
+    return true;
+  }
+
+  return dependencies.some((dependency) => {
+    const dependencyTimestamp = getCacheTimestamp(dependency);
+    return dependencyTimestamp !== null && dependencyTimestamp > moduleTimestamp;
+  });
 }
 
 /**
