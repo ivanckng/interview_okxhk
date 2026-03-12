@@ -37,10 +37,10 @@ export const MODULE_CONFIGS: Record<string, ModuleConfig> = {
   breakingNews: { key: 'breaking_news', ttl: 30 * 60 },   // 30 分鐘 (GNews 配額限制)
   market: { key: 'market', ttl: 10 * 60 },    // 10 分鐘
   marketHighlight: { key: 'market_highlight', ttl: 30 * 60 }, // 30 分鐘
-  stockIndices: { key: 'stock_indices', ttl: 1 * 60 },     // 1 分鐘 (股價波動快)
-  commodities: { key: 'commodities', ttl: 1 * 60 },        // 1 分鐘
-  currencies: { key: 'currencies', ttl: 1 * 60 },          // 1 分鐘
-  crypto: { key: 'crypto', ttl: 1 * 60 },     // 1 分鐘 (價格波動快)
+  stockIndices: { key: 'stock_indices', ttl: 5 * 60 },     // 5 分鐘
+  commodities: { key: 'commodities', ttl: 5 * 60 },        // 5 分鐘
+  currencies: { key: 'currencies', ttl: 5 * 60 },          // 5 分鐘
+  crypto: { key: 'crypto', ttl: 5 * 60 },     // 5 分鐘
   cryptoHighlight: { key: 'crypto_highlight', ttl: 30 * 60 }, // 30 分鐘
   company: { key: 'company', ttl: 15 * 60 },  // 15 分鐘
   companyHighlight: { key: 'company_highlight', ttl: 30 * 60 }, // 30 分鐘

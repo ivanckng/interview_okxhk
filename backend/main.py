@@ -88,6 +88,13 @@ async def lifespan(app: FastAPI):
         processed_news = [ProcessedNews(**item) for item in cached]
         print(f"✅ Loaded {len(processed_news)} news from cache")
 
+    if not processed_news:
+        print("📰 No cached news found, fetching initial news feed...")
+        try:
+            await _fetch_and_process_news()
+        except Exception as e:
+            print(f"⚠️ Initial news fetch failed: {e}")
+
     # Initialize scheduler with daily 7 AM refresh
     scheduler = init_scheduler(refresh_hour=7)
     # Register news refresh callback
@@ -938,8 +945,8 @@ async def get_crypto_prices(limit: int = 20):
         "highlight": highlight.model_dump()
     }
     
-    # Cache for 2 minutes
-    cache.set(cache_key, result, ttl=120)
+    # Cache for 5 minutes to stay within free-tier quotas.
+    cache.set(cache_key, result, ttl=300)
     
     return result
 
@@ -1074,20 +1081,13 @@ async def get_pulse_comprehensive(language: str = "zh"):
             "highlight": get_highlight_cache().get("news_highlight") or {},
         }
 
-        # Markets data - use existing analysis endpoint
+        # Markets data - read from cache only to avoid re-fetching limited sources
         markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}, "markets_data": {}}
-        try:
-            # Get AI analysis from existing endpoint which contains economy_indicators
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.get("http://localhost:8000/api/markets/analysis", timeout=60.0)
-                if resp.is_success:
-                    markets_analysis_data = resp.json()
-                    markets_data["_raw_response"] = markets_analysis_data
-                    markets_data["ai_analysis"] = markets_analysis_data.get("ai_analysis", {})
-                    markets_data["markets_data"] = markets_analysis_data.get("markets_data", {})
-                    markets_data["highlight"] = markets_analysis_data.get("markets_data", {}).get("highlight", {})
-        except Exception as e:
-            print(f"Error fetching markets data: {e}")
+        cached_markets = get_market_cache().get("markets_ai_analysis")
+        if cached_markets and isinstance(cached_markets, dict):
+            markets_data["ai_analysis"] = cached_markets.get("ai_analysis", {})
+            markets_data["markets_data"] = cached_markets.get("markets_data", {})
+            markets_data["highlight"] = cached_markets.get("markets_data", {}).get("highlight", {})
 
         # Competitors data
         competitors_data = {"announcements": [], "ai_analysis": {}}
@@ -1110,24 +1110,17 @@ async def get_pulse_comprehensive(language: str = "zh"):
         except Exception as e:
             print(f"Error fetching competitors data: {e}")
 
-        # Crypto data - use existing analysis endpoint
+        # Crypto data - read from cache only to avoid extra CoinGecko calls
         crypto_data = {"coins": [], "global": {}, "highlight": {}, "ai_analysis": {}}
-        try:
-            crypto_client = get_crypto_price_client()
-            crypto_prices = await crypto_client.get_top_coins(20)
-            crypto_global = await crypto_client.get_global_data()
-            crypto_data["coins"] = crypto_prices
-            crypto_data["global"] = crypto_global
-            crypto_data["highlight"] = get_highlight_cache().get("crypto_highlight") or {}
+        cached_crypto_prices = get_market_cache().get("crypto_prices_20")
+        if cached_crypto_prices and isinstance(cached_crypto_prices, dict):
+            crypto_data["coins"] = cached_crypto_prices.get("coins", [])
+            crypto_data["global"] = cached_crypto_prices.get("global", {})
+            crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
 
-            # Get AI analysis from existing endpoint
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("http://localhost:8000/api/crypto/analysis", timeout=30)
-                if resp.is_success:
-                    crypto_analysis_data = resp.json()
-                    crypto_data["ai_analysis"] = crypto_analysis_data.get("ai_analysis", {})
-        except Exception as e:
-            print(f"Error fetching crypto data: {e}")
+        cached_crypto_analysis = get_market_cache().get("deepseek_crypto_analysis")
+        if cached_crypto_analysis and isinstance(cached_crypto_analysis, dict):
+            crypto_data["ai_analysis"] = cached_crypto_analysis.get("analysis", {})
 
         # Generate comprehensive analysis using Pulse Agent
         pulse_agent = get_pulse_agent()
@@ -1207,7 +1200,12 @@ async def translate_text(request: TranslateRequest):
             )
             
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail=f"DeepL API error: {response.text}")
+                print(f"⚠️ DeepL translation failed ({response.status_code}), falling back to source text")
+                return {
+                    "translated_text": request.text,
+                    "fallback": True,
+                    "reason": f"DeepL API error: {response.text}"
+                }
             
             data = response.json()
             translated_text = data.get("translations", [{}])[0].get("text", request.text)
@@ -1215,7 +1213,12 @@ async def translate_text(request: TranslateRequest):
             return {"translated_text": translated_text}
 
     except httpx.RequestError as e:
-        raise HTTPException(status_code=503, detail=f"Translation service unavailable: {str(e)}")
+        print(f"⚠️ Translation service unavailable, falling back to source text: {e}")
+        return {
+            "translated_text": request.text,
+            "fallback": True,
+            "reason": f"Translation service unavailable: {str(e)}"
+        }
 
 
 @app.get("/api/news/breaking")
@@ -1224,12 +1227,12 @@ async def get_breaking_news():
     Get breaking news from GNews.io
     World news in Chinese
     
-    Fallback: Returns empty array if API is unavailable
+    Fallback: Returns stale cache if API is unavailable
     """
     gnews = get_gnews_client()
     result = await gnews.get_breaking_news(category="world", lang="zh", country="cn", max_results=10)
     
-    # If API fails, return empty articles with status
+    # If API fails and no cache is available, return empty articles with status
     if result.get("status") == "error" or not result.get("articles"):
         print("⚠️ GNews API unavailable, returning empty articles")
         return {

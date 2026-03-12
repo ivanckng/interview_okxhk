@@ -77,13 +77,22 @@ export const CryptoPage = () => {
   const {
     data: cryptoData,
     loading: cryptoLoading,
+    refresh: refreshCrypto,
   } = useCachedAPI<{ coins: CryptoCoin[]; global: any; highlight: HighlightSummary }>({
     module: 'crypto',
-    ttl: 2 * 60,
+    ttl: 5 * 60,
     fetcher: async () => {
       return api.getCryptoPrices(20);
     },
   });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshCrypto();
+    }, 300000);
+
+    return () => clearInterval(interval);
+  }, [refreshCrypto]);
 
   // 初始化时从缓存读取 highlight
   useEffect(() => {

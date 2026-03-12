@@ -1,12 +1,15 @@
 """
 Yahoo Finance API Client for Stock Indices
 Using yfinance library
-Updates every 1 minute
+Updates every 5 minutes
 """
 import yfinance as yf
 import pytz
 from datetime import datetime
 from utils.cache import get_market_cache
+
+
+YFINANCE_TTL = 300
 
 
 # Stock index symbols mapping
@@ -72,19 +75,19 @@ TIMEZONES = {
 def get_stock_indices(region: str = None):
     """
     Get stock indices for a specific region or all regions
-    Updates every 1 minute via cache
+    Updates every 5 minutes via cache
     """
     cache = get_market_cache()
     cache_key = "yfinance_indices"
     
-    # Check cache (1 minute TTL)
+    # Check cache (5 minute TTL)
     cached = cache.get(cache_key)
     if cached:
         cached_at = cached.get("cached_at")
         if cached_at:
             try:
                 cached_time = datetime.fromisoformat(cached_at)
-                if (datetime.utcnow() - cached_time).total_seconds() < 60:
+                if (datetime.utcnow() - cached_time).total_seconds() < YFINANCE_TTL:
                     print(f"✅ Using cached Yahoo Finance data")
                     if region:
                         return {"regions": {region: cached["regions"].get(region, [])}}
@@ -149,11 +152,11 @@ def get_stock_indices(region: str = None):
             "regions": regions_data,
             "data_source": "Yahoo Finance",
             "cached_at": datetime.utcnow().isoformat(),
-            "refresh_interval": "1 minute",
+            "refresh_interval": "5 minutes",
         }
         
-        # Cache for 1 minute
-        cache.set(cache_key, result, ttl=60)
+        # Cache for 5 minutes
+        cache.set(cache_key, result, ttl=YFINANCE_TTL)
         print(f"✅ Cached Yahoo Finance data")
         
         if region:
@@ -168,19 +171,19 @@ def get_stock_indices(region: str = None):
 def get_commodities():
     """
     Get commodities data (Crude Oil, Gold)
-    Updates every 1 minute via cache
+    Updates every 5 minutes via cache
     """
     cache = get_market_cache()
     cache_key = "yfinance_commodities"
     
-    # Check cache (1 minute TTL)
+    # Check cache (5 minute TTL)
     cached = cache.get(cache_key)
     if cached:
         cached_at = cached.get("cached_at")
         if cached_at:
             try:
                 cached_time = datetime.fromisoformat(cached_at)
-                if (datetime.utcnow() - cached_time).total_seconds() < 60:
+                if (datetime.utcnow() - cached_time).total_seconds() < YFINANCE_TTL:
                     print(f"✅ Using cached Yahoo Finance commodities data")
                     return cached
             except:
@@ -246,11 +249,11 @@ def get_commodities():
             "commodities": commodities_data,
             "data_source": "Yahoo Finance",
             "cached_at": datetime.utcnow().isoformat(),
-            "refresh_interval": "1 minute",
+            "refresh_interval": "5 minutes",
         }
         
-        # Cache for 1 minute
-        cache.set(cache_key, result, ttl=60)
+        # Cache for 5 minutes
+        cache.set(cache_key, result, ttl=YFINANCE_TTL)
         print(f"✅ Cached Yahoo Finance commodities data")
         
         return result
@@ -263,19 +266,19 @@ def get_commodities():
 def get_currency_rates():
     """
     Get currency exchange rates
-    Updates every 1 minute via cache
+    Updates every 5 minutes via cache
     """
     cache = get_market_cache()
     cache_key = "yfinance_currency"
     
-    # Check cache (1 minute TTL)
+    # Check cache (5 minute TTL)
     cached = cache.get(cache_key)
     if cached:
         cached_at = cached.get("cached_at")
         if cached_at:
             try:
                 cached_time = datetime.fromisoformat(cached_at)
-                if (datetime.utcnow() - cached_time).total_seconds() < 60:
+                if (datetime.utcnow() - cached_time).total_seconds() < YFINANCE_TTL:
                     print(f"✅ Using cached Yahoo Finance currency data")
                     return cached
             except:
@@ -334,11 +337,11 @@ def get_currency_rates():
             "currencies": currency_data,
             "data_source": "Yahoo Finance",
             "cached_at": datetime.utcnow().isoformat(),
-            "refresh_interval": "1 minute",
+            "refresh_interval": "5 minutes",
         }
         
-        # Cache for 1 minute
-        cache.set(cache_key, result, ttl=60)
+        # Cache for 5 minutes
+        cache.set(cache_key, result, ttl=YFINANCE_TTL)
         print(f"✅ Cached Yahoo Finance currency data")
         
         return result

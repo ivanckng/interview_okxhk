@@ -363,7 +363,7 @@ export const MarketsPage = () => {
     };
   }, [language]);
 
-  // ==================== 突发新闻 - 30 分钟缓存 + 可见性刷新 ====================
+  // ==================== 突发新闻 - 30 分钟缓存 + 10 分钟检查 ====================
   useEffect(() => {
     const fetchBreakingNews = async (forceRefresh = false) => {
       // 检查前端缓存 (30 分钟)，强制刷新时跳过
@@ -405,6 +405,8 @@ export const MarketsPage = () => {
     // 首次加载
     fetchBreakingNews();
 
+    const interval = setInterval(() => fetchBreakingNews(false), 600000);
+
     // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -416,6 +418,7 @@ export const MarketsPage = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [language]);
@@ -448,7 +451,7 @@ export const MarketsPage = () => {
     fetchEconomyData();
   }, []);
 
-  // ==================== 股指 - 1 分钟刷新，5 分钟前端缓存 ====================
+  // ==================== 股指 - 5 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchIndices = async () => {
       // 检查前端缓存 (5 分钟)
@@ -494,13 +497,13 @@ export const MarketsPage = () => {
 
     fetchIndices();
 
-    // Refresh every 1 minute (60000 ms)
-    const interval = setInterval(fetchIndices, 60000);
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchIndices, 300000);
 
     return () => clearInterval(interval);
   }, [language]);
 
-  // ==================== 大宗商品 - 1 分钟刷新，5 分钟前端缓存 ====================
+  // ==================== 大宗商品 - 5 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchCommodities = async () => {
       // 检查前端缓存 (5 分钟)
@@ -540,13 +543,13 @@ export const MarketsPage = () => {
 
     fetchCommodities();
 
-    // Refresh every 1 minute (60000 ms)
-    const interval = setInterval(fetchCommodities, 60000);
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchCommodities, 300000);
 
     return () => clearInterval(interval);
   }, [language]);
 
-  // ==================== 外汇汇率 - 1 分钟刷新，5 分钟前端缓存 ====================
+  // ==================== 外汇汇率 - 5 分钟刷新，5 分钟前端缓存 ====================
   useEffect(() => {
     const fetchCurrencies = async () => {
       // 检查前端缓存 (5 分钟)
@@ -586,8 +589,8 @@ export const MarketsPage = () => {
 
     fetchCurrencies();
 
-    // Refresh every 1 minute (60000 ms)
-    const interval = setInterval(fetchCurrencies, 60000);
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchCurrencies, 300000);
 
     return () => clearInterval(interval);
   }, [language]);

@@ -95,6 +95,13 @@ export const NewsPage = () => {
   const loading = newsLoading;
   const news = cachedNews || [];
 
+  useEffect(() => {
+    if (!newsLoading && cachedNews && cachedNews.length === 0) {
+      console.log('[NewsPage] Empty cached news detected, forcing refresh');
+      refreshNews();
+    }
+  }, [newsLoading, cachedNews, refreshNews]);
+
   // ==================== 新闻数据 - 每 5 分钟自动刷新 ====================
   useEffect(() => {
     // 首次加载后，设置定时刷新

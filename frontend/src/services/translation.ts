@@ -3,9 +3,33 @@ import { type Language } from '../contexts/LanguageContext';
 // 使用后端代理翻译（避免 CORS 问题）
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const TRANSLATE_ENDPOINT = `${API_BASE_URL}/api/translate`;
+const TRANSLATION_STORAGE_KEY = 'crypto_pulse_translation_cache';
 
 // 翻译缓存
-const translationCache: Record<string, string> = {};
+const translationCache: Record<string, string> = (() => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const stored = localStorage.getItem(TRANSLATION_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+})();
+
+function persistTranslationCache(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.setItem(TRANSLATION_STORAGE_KEY, JSON.stringify(translationCache));
+  } catch {
+    // Ignore quota errors for translation cache.
+  }
+}
 
 /**
  * 使用后端代理翻译文本（通过 DeepL API）
@@ -47,6 +71,7 @@ export async function translateText(
 
     // 缓存结果
     translationCache[cacheKey] = translatedText;
+    persistTranslationCache();
 
     return translatedText;
   } catch (error) {
@@ -307,4 +332,7 @@ export function clearTranslationCache(): void {
   Object.keys(translationCache).forEach(key => {
     delete translationCache[key];
   });
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(TRANSLATION_STORAGE_KEY);
+  }
 }

@@ -74,7 +74,11 @@ export function useCachedAPI<T>({
   /**
    * 從緩存或 API 獲取數據
    */
-  const fetchData = useCallback(async (showLoading = true, isBackgroundRefresh = false) => {
+  const fetchData = useCallback(async (
+    showLoading = true,
+    isBackgroundRefresh = false,
+    forceRefresh = false,
+  ) => {
     if (!mountedRef.current) return;
 
     // 如果不是背景刷新，取消之前的請求
@@ -99,7 +103,7 @@ export function useCachedAPI<T>({
       setError(null);
 
       // 1. 先嘗試從緩存讀取
-      const cachedData = cacheService.getCache<T>(module);
+      const cachedData = forceRefresh ? null : cacheService.getCache<T>(module);
       
       if (cachedData !== null) {
         if (!mountedRef.current) return;
@@ -211,7 +215,7 @@ export function useCachedAPI<T>({
    * 刷新數據（強制從 API 獲取）
    */
   const refreshData = useCallback(async (isBackground = false) => {
-    await fetchData(false, isBackground);
+    await fetchData(false, isBackground, true);
   }, [fetchData]);
 
   /**

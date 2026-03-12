@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -14,6 +14,7 @@ import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews 
 
 export const PulsePage = () => {
   const { language } = useLanguage();
+  const hasInitializedLanguageEffect = useRef(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [pulseSummary, setPulseSummary] = useState<PulseSummary | null>(null);
   const [recommendations, setRecommendations] = useState<PulseRecommendation[]>([]);
@@ -174,11 +175,8 @@ export const PulsePage = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // ==================== 首次加载和定时刷新 ====================
+  // ==================== 定时刷新 ====================
   useEffect(() => {
-    // 首次加载
-    fetchPulseData();
-
     // 定时刷新：每 20 分钟
     const interval = setInterval(() => fetchPulseData(false), 1200000);
 
@@ -238,6 +236,10 @@ export const PulsePage = () => {
 
   // 语言变化时重新获取数据
   useEffect(() => {
+    if (!hasInitializedLanguageEffect.current) {
+      hasInitializedLanguageEffect.current = true;
+      return;
+    }
     fetchPulseData(false);
   }, [language]);
 

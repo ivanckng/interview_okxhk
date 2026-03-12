@@ -18,6 +18,8 @@ class GNewsClient:
     """
 
     BASE_URL = "https://gnews.io/api/v4/top-headlines"
+    REFRESH_TTL = 1800
+    STALE_TTL = 7200
 
     def __init__(self):
         self.api_key = os.getenv("GNEWS_API_KEY", "9785b9f8aa8b8a41bb4b353f8cf3e771")
@@ -58,7 +60,6 @@ class GNewsClient:
         """
         cache_key = self._get_cache_key(category)
 
-        # Check cache (30 minute TTL)
         cached = self._cache.get(cache_key)
         if cached and isinstance(cached, dict) and not self._should_refresh_cache(cached):
             print(f"✅ Using cached GNews news for {category}")
@@ -105,16 +106,23 @@ class GNewsClient:
                     "category": category,
                     "language": lang,
                     "country": country,
+                    "cached_at": datetime.utcnow().isoformat(),
                 }
 
-                # Cache for 30 minutes
-                self._cache.set(cache_key, result, ttl=1800)
+                # Keep stale cache longer so we can serve it if the provider fails.
+                self._cache.set(cache_key, result, ttl=self.STALE_TTL)
                 print(f"✅ Cached GNews news: {len(transformed_articles)} articles")
 
                 return result
 
         except Exception as e:
             print(f"⚠️ GNews API error: {e}")
+            if cached and isinstance(cached, dict):
+                print(f"⚠️ Returning stale GNews cache for {category}")
+                stale_result = dict(cached)
+                stale_result["stale"] = True
+                stale_result["error"] = str(e)
+                return stale_result
             return {
                 "status": "error",
                 "error": str(e),
