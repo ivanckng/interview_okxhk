@@ -36,9 +36,9 @@ const impactConfig = {
 const staticTranslations = {
   en: {
     noAnnouncements: 'Fetching related announcements.',
-    bybitSource: 'Bybit: Official API',
-    binanceSource: 'Binance: RSS Feed',
-    bitgetSource: 'Bitget: API',
+    bybitSource: 'Bybit: Official Announcement API',
+    binanceSource: 'Binance: Official Announcement API',
+    bitgetSource: 'Bitget: Official Announcement API',
     updatedAt: 'Updated',
     top: 'TOP',
     filters: {
@@ -57,9 +57,9 @@ const staticTranslations = {
   },
   zh: {
     noAnnouncements: '正在获取相关公告。',
-    bybitSource: 'Bybit: 官方 API',
-    binanceSource: 'Binance: RSS Feed',
-    bitgetSource: 'Bitget: API',
+    bybitSource: 'Bybit: 官方公告接口',
+    binanceSource: 'Binance: 官方公告接口',
+    bitgetSource: 'Bitget: 官方公告接口',
     updatedAt: '更新于',
     top: '置顶',
     filters: {
