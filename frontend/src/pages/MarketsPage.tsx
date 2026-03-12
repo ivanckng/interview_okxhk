@@ -6,6 +6,7 @@ import { translateHighlightSummary } from '../services/apiTranslation';
 import { translateNewsArticles, translateStockIndices, translateCommodities, translateCurrencyRates } from '../services/translation';
 import * as cacheService from '../services/cache';
 import type { HighlightSummary } from '../services/api';
+import { apiUrl } from '../services/config';
 
 // 地区股指 Mock 数据（fallback）
 const stockIndicesMock = {
@@ -291,7 +292,7 @@ export const MarketsPage = () => {
         }
 
         // 从后端获取
-        const response = await fetch(`http://localhost:8000/api/markets/analysis`);
+        const response = await fetch(apiUrl('/api/markets/analysis'));
         const data = await response.json();
 
         console.log('[MarketsPage] AI Analysis response:', data);
@@ -382,7 +383,7 @@ export const MarketsPage = () => {
       }
 
       try {
-        const response = await fetch(`http://localhost:8000/api/news/breaking`);
+        const response = await fetch(apiUrl('/api/news/breaking'));
         const data = await response.json();
 
         let articles = data.articles || [];
@@ -429,8 +430,8 @@ export const MarketsPage = () => {
       setEconomyLoading(true);
       try {
         const [usResponse, cnResponse] = await Promise.all([
-          fetch(`http://localhost:8000/api/economy/us`),
-          fetch(`http://localhost:8000/api/economy/cn`),
+          fetch(apiUrl('/api/economy/us')),
+          fetch(apiUrl('/api/economy/cn')),
         ]);
         
         const usData = await usResponse.json();
@@ -469,7 +470,7 @@ export const MarketsPage = () => {
 
       setIndicesLoading(true);
       try {
-        const response = await fetch(`http://localhost:8000/api/market/indices`);
+        const response = await fetch(apiUrl('/api/market/indices'));
         const data = await response.json();
 
         let regions = data.regions || {};
@@ -521,7 +522,7 @@ export const MarketsPage = () => {
 
       setCommoditiesLoading(true);
       try {
-        const response = await fetch(`http://localhost:8000/api/market/commodities`);
+        const response = await fetch(apiUrl('/api/market/commodities'));
         const data = await response.json();
 
         let commodities = data.commodities || [];
@@ -567,7 +568,7 @@ export const MarketsPage = () => {
 
       setCurrenciesLoading(true);
       try {
-        const response = await fetch(`http://localhost:8000/api/market/currency`);
+        const response = await fetch(apiUrl('/api/market/currency'));
         const data = await response.json();
 
         let currencies = data.currencies || [];

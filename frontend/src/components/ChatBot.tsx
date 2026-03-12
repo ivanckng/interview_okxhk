@@ -3,6 +3,7 @@ import type { ChatMessage } from '../types/chat';
 import { suggestedQuestions, formatTime, suggestedQuestionsZh } from '../data/chatData';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePageContext } from '../hooks/usePageContext';
+import { apiUrl } from '../services/config';
 import {
   MessageSquare,
   X,
@@ -58,7 +59,7 @@ export const ChatBot = () => {
 
     try {
       // Call backend Qwen API
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

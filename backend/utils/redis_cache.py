@@ -5,8 +5,8 @@ Redis 緩存工具模塊
 import json
 import redis
 from typing import Any, Optional
-from datetime import datetime
 import os
+from utils.runtime import is_cloud_run
 
 
 class RedisCache:
@@ -190,7 +190,11 @@ def get_redis_cache() -> RedisCache:
     global _redis_cache
     if _redis_cache is None:
         # 從環境變量讀取配置
-        host = os.getenv('REDIS_HOST', 'localhost')
+        host = os.getenv('REDIS_HOST')
+        if not host:
+            if is_cloud_run():
+                print("⚠️ REDIS_HOST is not configured; Cloud Run will fall back to in-process cache only")
+            host = 'localhost'
         port = int(os.getenv('REDIS_PORT', '6379'))
         db = int(os.getenv('REDIS_DB', '0'))
         _redis_cache = RedisCache(host=host, port=port, db=db)

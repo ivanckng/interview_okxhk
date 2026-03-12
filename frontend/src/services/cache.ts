@@ -5,12 +5,10 @@
  * 1. 存儲 API 響應數據到 LocalStorage
  * 2. 支持 TTL (Time To Live) 過期機制
  * 3. 自動清理過期數據
- * 4. 每天早上 7 點後首次訪問自動觸發全局刷新
+ * 4. 生產環境由後端調度預熱，前端只管理本地展示緩存
  */
 
 const CACHE_PREFIX = 'crypto_pulse_cache_';
-const LAST_REFRESH_KEY = 'last_global_refresh';
-const DAILY_REFRESH_HOUR = 7; // 每天早上 7 點
 
 export interface CacheEntry<T> {
   data: T;
@@ -59,41 +57,6 @@ export const MODULE_CONFIGS: Record<string, ModuleConfig> = {
  */
 function getStorageKey(key: string): string {
   return `${CACHE_PREFIX}${key}`;
-}
-
-/**
- * 檢查是否已過早上 7 點且尚未刷新
- */
-function shouldTriggerDailyRefresh(): boolean {
-  const now = new Date();
-  const lastRefreshStr = localStorage.getItem(getStorageKey(LAST_REFRESH_KEY));
-  
-  if (!lastRefreshStr) {
-    return true; // 從未有過刷新
-  }
-  
-  const lastRefresh = new Date(parseInt(lastRefreshStr, 10));
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), DAILY_REFRESH_HOUR, 0, 0);
-  const lastRefreshDate = new Date(lastRefresh.getFullYear(), lastRefresh.getMonth(), lastRefresh.getDate());
-  
-  // 如果今天是 7 點後已經刷新過，返回 false
-  if (lastRefreshDate.getTime() === today.getTime() && lastRefresh.getTime() >= today.getTime()) {
-    return false;
-  }
-  
-  // 如果現在還不到 7 點，返回 false
-  if (now.getHours() < DAILY_REFRESH_HOUR) {
-    return false;
-  }
-  
-  return true; // 需要刷新
-}
-
-/**
- * 更新每日刷新時間戳
- */
-function updateLastRefreshTime(): void {
-  localStorage.setItem(getStorageKey(LAST_REFRESH_KEY), Date.now().toString());
 }
 
 /**
@@ -230,7 +193,6 @@ export function clearAllCache(): void {
   }
   
   keysToRemove.forEach(key => localStorage.removeItem(key));
-  updateLastRefreshTime();
 }
 
 /**
@@ -300,42 +262,23 @@ export function getCacheStats(): CacheStats {
 }
 
 /**
- * 檢查並返回是否需要全局刷新
- * 如果是，會自動觸發後端的全局刷新 API
+ * 雲端部署由 Cloud Scheduler 管理全局刷新，前端不再主動觸發
  */
 export async function checkAndTriggerDailyRefresh(): Promise<boolean> {
-  if (!shouldTriggerDailyRefresh()) {
-    return false;
-  }
-  
-  try {
-    console.log('🔄 Triggering daily global refresh...');
-    const response = await fetch('http://localhost:8000/api/cache/global-refresh', {
-      method: 'POST',
-    });
-    
-    if (response.ok) {
-      updateLastRefreshTime();
-      console.log('✅ Daily refresh completed');
-      return true;
-    }
-  } catch (error) {
-    console.error('❌ Daily refresh failed:', error);
-  }
-  
   return false;
 }
 
 /**
- * 獲取距下次全局刷新的剩餘時間（毫秒）
+ * 獲取距下次建議雲端刷新的剩餘時間（毫秒）
  */
 export function getTimeUntilNextRefresh(): number {
   const now = new Date();
+  const dailyRefreshHour = 7;
   const nextRefresh = new Date(
     now.getFullYear(),
     now.getMonth(),
-    now.getDate() + (now.getHours() >= DAILY_REFRESH_HOUR ? 1 : 0),
-    DAILY_REFRESH_HOUR,
+    now.getDate() + (now.getHours() >= dailyRefreshHour ? 1 : 0),
+    dailyRefreshHour,
     0,
     0
   );

@@ -29,7 +29,7 @@ class NewsDataClient:
     LANGUAGES = ['en', 'zh', 'zh-Hant']
 
     def __init__(self):
-        self.api_key = os.getenv("NEWSDATA_API_KEY", "pub_e5888fadee0a4b64b3c3349ec74c5262")
+        self.api_key = os.getenv("NEWSDATA_API_KEY")
         self._cache = get_news_cache()
 
     def _get_cache_key(self, category: str) -> str:

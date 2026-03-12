@@ -20,7 +20,7 @@ class TushareClient:
     BASE_URL = "http://api.tushare.pro"
 
     def __init__(self):
-        self.api_token = os.getenv("TUSHARE_API_TOKEN", "cc7ac2c5350c965d079a4c1728688a2107f74e479e43b60ce330c8f3")
+        self.api_token = os.getenv("TUSHARE_API_TOKEN")
         self._cache = get_market_cache()
 
     def _get_cache_key(self) -> str:

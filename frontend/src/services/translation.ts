@@ -1,8 +1,9 @@
 import { type Language } from '../contexts/LanguageContext';
+import { apiUrl } from './config';
 
 // 使用后端代理翻译（避免 CORS 问题）
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const TRANSLATE_ENDPOINT = `${API_BASE_URL}/api/translate`;
+const TRANSLATE_ENDPOINT = apiUrl('/api/translate');
+const TRANSLATE_BATCH_ENDPOINT = apiUrl('/api/translate/batch');
 const TRANSLATION_STORAGE_KEY = 'crypto_pulse_translation_cache';
 
 // 翻译缓存
@@ -38,7 +39,7 @@ export async function translateText(
   text: string,
   targetLang: Language
 ): Promise<string> {
-  if (!text || targetLang === 'en') {
+  if (!text) {
     return text;
   }
 
@@ -87,23 +88,63 @@ export async function translateTexts(
   texts: string[],
   targetLang: Language
 ): Promise<string[]> {
-  if (targetLang === 'en' || !texts.length) {
+  if (!texts.length) {
     return texts;
   }
 
-  const results: string[] = [];
-  
-  for (const text of texts) {
+  const results = [...texts];
+  const missingEntries: Array<{ index: number; text: string; cacheKey: string }> = [];
+
+  texts.forEach((text, index) => {
     if (!text) {
-      results.push('');
-      continue;
+      return;
     }
-    
-    const translated = await translateText(text, targetLang);
-    results.push(translated);
-    
-    // 添加小延迟避免频率限制
-    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const cacheKey = `${text}_${targetLang}`;
+    const cached = translationCache[cacheKey];
+    if (cached) {
+      results[index] = cached;
+      return;
+    }
+
+    missingEntries.push({ index, text, cacheKey });
+  });
+
+  if (!missingEntries.length) {
+    return results;
+  }
+
+  try {
+    const response = await fetch(TRANSLATE_BATCH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        texts: missingEntries.map(entry => entry.text),
+        target_lang: targetLang.toUpperCase(),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Translation batch API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const translatedTexts: string[] = data.translated_texts || missingEntries.map(entry => entry.text);
+
+    missingEntries.forEach((entry, position) => {
+      const translated = translatedTexts[position] || entry.text;
+      translationCache[entry.cacheKey] = translated;
+      results[entry.index] = translated;
+    });
+    persistTranslationCache();
+    return results;
+  } catch (error) {
+    console.error('[Translation] Batch error:', error);
+    for (const entry of missingEntries) {
+      results[entry.index] = await translateText(entry.text, targetLang);
+    }
   }
 
   return results;

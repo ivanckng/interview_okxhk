@@ -7,6 +7,7 @@ import { translateHighlightSummary } from '../services/apiTranslation';
 import { useCachedAPI } from '../hooks/useCachedAPI';
 import * as cacheService from '../services/cache';
 import type { HighlightSummary } from '../services/api';
+import { apiUrl } from '../services/config';
 
 interface CryptoCoin {
   id: string;
@@ -125,7 +126,7 @@ export const CryptoPage = () => {
       try {
         console.log('[Crypto AI] Fetching analysis, language:', language);
 
-        const response = await fetch(`http://localhost:8000/api/crypto/analysis`);
+        const response = await fetch(apiUrl('/api/crypto/analysis'));
         const data = await response.json();
 
         const aiAnalysis = data.ai_analysis;

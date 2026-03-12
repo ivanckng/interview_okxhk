@@ -12,6 +12,7 @@ import httpx
 from datetime import datetime
 from typing import Dict, Any
 from utils.cache import get_market_cache
+from utils.runtime import get_internal_api_base_url
 
 
 class MarketsDataAggregator:
@@ -21,7 +22,7 @@ class MarketsDataAggregator:
 
     def __init__(self):
         self._cache = get_market_cache()
-        self.api_base = "http://localhost:8000"
+        self.api_base = get_internal_api_base_url()
 
     def _get_cache_key(self) -> str:
         return "markets_ai_analysis"

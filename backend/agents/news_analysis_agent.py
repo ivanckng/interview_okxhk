@@ -10,6 +10,7 @@ import re
 from typing import Dict, Any, List
 from datetime import datetime
 from utils.cache import get_market_cache
+from utils.cache_keys import stable_hash
 
 
 class DeepSeekNewsAnalysisAgent:
@@ -22,8 +23,19 @@ class DeepSeekNewsAnalysisAgent:
         self.api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
         self._cache = get_market_cache()
 
-    def _get_cache_key(self) -> str:
-        return "deepseek_news_analysis"
+    def _get_cache_key(self, news_data: List[Dict[str, Any]]) -> str:
+        summary = [
+            {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "category": item.get("category"),
+                "priority": item.get("priority"),
+                "hot_score": item.get("hot_score"),
+                "sentiment": item.get("sentiment"),
+            }
+            for item in news_data[:10]
+        ]
+        return f"deepseek_news_analysis:{stable_hash(summary)}"
 
     def _should_refresh_cache(self, cached_data: Any) -> bool:
         """Refresh every 10 minutes"""
@@ -41,7 +53,7 @@ class DeepSeekNewsAnalysisAgent:
 
     async def analyze_news(self, news_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze news data and generate insights"""
-        cache_key = self._get_cache_key()
+        cache_key = self._get_cache_key(news_data)
         
         # Check cache (10 minute TTL)
         cached = self._cache.get(cache_key)

@@ -10,6 +10,7 @@ import re
 from typing import Dict, Any, List
 from datetime import datetime
 from utils.cache import get_market_cache
+from utils.cache_keys import stable_hash
 
 
 class DeepSeekMarketsAgent:
@@ -22,8 +23,18 @@ class DeepSeekMarketsAgent:
         self.api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
         self._cache = get_market_cache()
 
-    def _get_cache_key(self) -> str:
-        return "deepseek_markets_analysis"
+    def _get_cache_key(self, markets_data: Dict[str, Any]) -> str:
+        summary = {
+            "economy_indicators": markets_data.get("economy_indicators", {}),
+            "stock_indices": markets_data.get("stock_indices", {}),
+            "commodities": markets_data.get("commodities", [])[:5],
+            "currency_rates": markets_data.get("currency_rates", [])[:5],
+            "breaking_news": [
+                {"id": item.get("id"), "title": item.get("title")}
+                for item in markets_data.get("breaking_news", [])[:5]
+            ],
+        }
+        return f"deepseek_markets_analysis:{stable_hash(summary)}"
 
     def _should_refresh_cache(self, cached_data: Any) -> bool:
         """Refresh every 10 minutes"""
@@ -41,7 +52,7 @@ class DeepSeekMarketsAgent:
 
     async def analyze_markets(self, markets_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze all markets data and generate insights"""
-        cache_key = self._get_cache_key()
+        cache_key = self._get_cache_key(markets_data)
         
         # Check cache (10 minute TTL)
         cached = self._cache.get(cache_key)
@@ -190,8 +201,25 @@ class DeepSeekCryptoAgent:
         self.api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
         self._cache = get_market_cache()
 
-    def _get_cache_key(self) -> str:
-        return "deepseek_crypto_analysis"
+    def _get_cache_key(self, crypto_data: Dict[str, Any]) -> str:
+        summary = {
+            "top_coins": [
+                {
+                    "id": coin.get("id"),
+                    "symbol": coin.get("symbol"),
+                    "current_price": coin.get("current_price"),
+                    "price_change_percentage_24h": coin.get("price_change_percentage_24h"),
+                    "price_change_percentage_7d_in_currency": coin.get("price_change_percentage_7d_in_currency"),
+                }
+                for coin in crypto_data.get("top_coins", [])[:10]
+            ],
+            "global_data": {
+                "total_market_cap": crypto_data.get("global_data", {}).get("total_market_cap", {}),
+                "total_volume": crypto_data.get("global_data", {}).get("total_volume", {}),
+                "market_cap_percentage": crypto_data.get("global_data", {}).get("market_cap_percentage", {}),
+            },
+        }
+        return f"deepseek_crypto_analysis:{stable_hash(summary)}"
 
     def _should_refresh_cache(self, cached_data: Any) -> bool:
         """Refresh every 10 minutes"""
@@ -209,7 +237,7 @@ class DeepSeekCryptoAgent:
 
     async def analyze_crypto(self, crypto_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze crypto market data and generate insights"""
-        cache_key = self._get_cache_key()
+        cache_key = self._get_cache_key(crypto_data)
         
         # Check cache (10 minute TTL)
         cached = self._cache.get(cache_key)

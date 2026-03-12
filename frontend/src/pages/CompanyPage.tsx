@@ -3,6 +3,8 @@ import type { Exchange, AnnouncementType } from '../types/company';
 import { CopilotHighlight } from '../components/CopilotHighlight';
 import { useLanguage } from '../contexts/LanguageContext';
 import * as cacheService from '../services/cache';
+import { apiUrl } from '../services/config';
+import { translateTexts } from '../services/translation';
 
 import {
   exchanges,
@@ -194,7 +196,7 @@ export const CompanyPage = () => {
           language: language === 'zh' ? 'zh' : 'en',
         };
 
-        const response = await fetch('http://localhost:8000/api/competitors/analysis', {
+        const response = await fetch(apiUrl('/api/competitors/analysis'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(allData),
@@ -214,53 +216,28 @@ export const CompanyPage = () => {
           if (language === 'en' && !/[a-zA-Z]{3,}/.test(aiAnalysis.summary)) {
             try {
               // Translate summary
-              const summaryRes = await fetch('http://localhost:8000/api/translate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: aiAnalysis.summary, target_lang: 'EN' }),
-              });
-              if (summaryRes.ok) {
-                const summaryData = await summaryRes.json();
-                aiAnalysis.summary = summaryData.translated_text;
-              }
+              const textsToTranslate = [
+                aiAnalysis.summary,
+                aiAnalysis.trend_label,
+                ...(aiAnalysis.key_points || []),
+              ].filter((text: string) => text && !/[a-zA-Z]{3,}/.test(text));
 
-              // Translate trend_label
-              if (aiAnalysis.trend_label && !/[a-zA-Z]{3,}/.test(aiAnalysis.trend_label)) {
-                const labelRes = await fetch('http://localhost:8000/api/translate', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ text: aiAnalysis.trend_label, target_lang: 'EN' }),
-                });
-                if (labelRes.ok) {
-                  const labelData = await labelRes.json();
-                  aiAnalysis.trend_label = labelData.translated_text;
+              if (textsToTranslate.length > 0) {
+                const translatedTexts = await translateTexts(textsToTranslate, 'en');
+                let translatedIndex = 0;
+
+                if (!/[a-zA-Z]{3,}/.test(aiAnalysis.summary)) {
+                  aiAnalysis.summary = translatedTexts[translatedIndex++] || aiAnalysis.summary;
                 }
-              }
-
-              // Translate key_points
-              if (aiAnalysis.key_points && aiAnalysis.key_points.length > 0) {
-                const translatedPoints = await Promise.all(
-                  aiAnalysis.key_points
-                    .filter((point: string) => !/[a-zA-Z]{3,}/.test(point))
-                    .map(async (point: string) => {
-                      const pointRes = await fetch('http://localhost:8000/api/translate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: point, target_lang: 'EN' }),
-                      });
-                      if (pointRes.ok) {
-                        const pointData = await pointRes.json();
-                        return pointData.translated_text;
-                      }
-                      return point;
-                    })
-                );
-                // Merge translated and non-translated points
-                let pointIndex = 0;
-                aiAnalysis.key_points = aiAnalysis.key_points.map((point: string) => {
-                  if (/[a-zA-Z]{3,}/.test(point)) return point;
-                  return translatedPoints[pointIndex++] || point;
-                });
+                if (aiAnalysis.trend_label && !/[a-zA-Z]{3,}/.test(aiAnalysis.trend_label)) {
+                  aiAnalysis.trend_label = translatedTexts[translatedIndex++] || aiAnalysis.trend_label;
+                }
+                if (aiAnalysis.key_points && aiAnalysis.key_points.length > 0) {
+                  aiAnalysis.key_points = aiAnalysis.key_points.map((point: string) => {
+                    if (/[a-zA-Z]{3,}/.test(point)) return point;
+                    return translatedTexts[translatedIndex++] || point;
+                  });
+                }
               }
             } catch (translateErr) {
               console.error('Failed to translate AI analysis:', translateErr);
@@ -329,13 +306,13 @@ export const CompanyPage = () => {
 
       try {
         let locale = language === 'zh' ? 'zh-CN' : 'en-US';
-        let response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bybit/announcements?locale=${locale}&limit=20`);
+        let response = await fetchWithTimeout(apiUrl(`/api/exchanges/bybit/announcements?locale=${locale}&limit=20`));
         let data = await response.json();
         console.log('[Company] Bybit API response:', data.announcements?.length, 'announcements');
 
         // If zh-CN returns empty, fallback to en-US
         if ((!data.announcements || data.announcements.length === 0) && locale === 'zh-CN') {
-          response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bybit/announcements?locale=en-US&limit=20`);
+          response = await fetchWithTimeout(apiUrl('/api/exchanges/bybit/announcements?locale=en-US&limit=20'));
           data = await response.json();
         }
 
@@ -362,7 +339,7 @@ export const CompanyPage = () => {
       }
 
       try {
-        const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/binance/announcements?limit=20`);
+        const response = await fetchWithTimeout(apiUrl('/api/exchanges/binance/announcements?limit=20'));
         const data = await response.json();
         console.log('[Company] Binance API response:', data.announcements?.length, 'announcements');
 
@@ -390,7 +367,7 @@ export const CompanyPage = () => {
 
       try {
         let lang = language === 'zh' ? 'zh_CN' : 'en_US';
-        const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bitget/announcements?language=${lang}&limit=10`);
+        const response = await fetchWithTimeout(apiUrl(`/api/exchanges/bitget/announcements?language=${lang}&limit=10`));
         const data = await response.json();
         console.log('[Company] Bitget API response:', data.announcements?.length, 'announcements');
 

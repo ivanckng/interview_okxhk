@@ -1,4 +1,4 @@
-import { translateText, getCachedTranslation } from './translation';
+import { translateTexts } from './translation';
 import type { Language } from '../contexts/LanguageContext';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews, HighlightSummary } from './api';
 
@@ -22,24 +22,7 @@ export async function translatePulseSummary(
     ...data.hot_sectors,
   ].filter(Boolean);
 
-  const translatedTexts: string[] = [];
-
-  for (const text of textsToTranslate) {
-    const cached = getCachedTranslation(text, targetLang);
-    if (cached) {
-      translatedTexts.push(cached);
-    } else {
-      try {
-        const translated = await translateText(text, targetLang);
-        translatedTexts.push(translated);
-        // 添加小延迟避免频率限制
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error('[API Translation] Translation error:', error);
-        translatedTexts.push(text);
-      }
-    }
-  }
+  const translatedTexts = await translateTexts(textsToTranslate, targetLang);
 
   // 重建对象
   let index = 0;
@@ -75,23 +58,7 @@ export async function translatePulseRecommendations(
       ...rec.action_items,
     ].filter(Boolean);
 
-    const translatedTexts: string[] = [];
-
-    for (const text of textsToTranslate) {
-      const cached = getCachedTranslation(text, targetLang);
-      if (cached) {
-        translatedTexts.push(cached);
-      } else {
-        try {
-          const translated = await translateText(text, targetLang);
-          translatedTexts.push(translated);
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.error('Translation error:', error);
-          translatedTexts.push(text);
-        }
-      }
-    }
+    const translatedTexts = await translateTexts(textsToTranslate, targetLang);
 
     let index = 0;
     translated.push({
@@ -120,23 +87,7 @@ export async function translateTrendPrediction(
     ...Object.values(data.category_trends).map(t => t.trend),
   ].filter(Boolean);
 
-  const translatedTexts: string[] = [];
-
-  for (const text of textsToTranslate) {
-    const cached = getCachedTranslation(text, targetLang);
-    if (cached) {
-      translatedTexts.push(cached);
-    } else {
-      try {
-        const translated = await translateText(text, targetLang);
-        translatedTexts.push(translated);
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error('Translation error:', error);
-        translatedTexts.push(text);
-      }
-    }
-  }
+  const translatedTexts = await translateTexts(textsToTranslate, targetLang);
 
   // 重建 category_trends
   const translatedCategoryTrends: Record<string, { trend: string; strength: number; sentiment_score: number }> = {};
@@ -170,46 +121,8 @@ export async function translateProcessedNews(
   targetLang: Language
 ): Promise<ProcessedNews[]> {
   if (targetLang === 'en' || !newsList) return newsList;
-
-  const translated: ProcessedNews[] = [];
-
-  for (const news of newsList) {
-    const textsToTranslate = [
-      news.title,
-      news.summary,
-      ...news.tags,
-      ...news.key_topics,
-    ].filter(Boolean);
-
-    const translatedTexts: string[] = [];
-
-    for (const text of textsToTranslate) {
-      const cached = getCachedTranslation(text, targetLang);
-      if (cached) {
-        translatedTexts.push(cached);
-      } else {
-        try {
-          const translated = await translateText(text, targetLang);
-          translatedTexts.push(translated);
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.error('Translation error:', error);
-          translatedTexts.push(text);
-        }
-      }
-    }
-
-    let index = 0;
-    translated.push({
-      ...news,
-      title: translatedTexts[index++] || news.title,
-      summary: translatedTexts[index++] || news.summary,
-      tags: news.tags.map(() => translatedTexts[index++] || ''),
-      key_topics: news.key_topics.map(() => translatedTexts[index++] || ''),
-    });
-  }
-
-  return translated;
+  // Preserve source-language news lists to avoid exhausting translation quotas.
+  return newsList;
 }
 
 /**
@@ -227,23 +140,7 @@ export async function translateHighlightSummary(
     ...data.highlights,
   ].filter(Boolean);
 
-  const translatedTexts: string[] = [];
-
-  for (const text of textsToTranslate) {
-    const cached = getCachedTranslation(text, targetLang);
-    if (cached) {
-      translatedTexts.push(cached);
-    } else {
-      try {
-        const translated = await translateText(text, targetLang);
-        translatedTexts.push(translated);
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error('Translation error:', error);
-        translatedTexts.push(text);
-      }
-    }
-  }
+  const translatedTexts = await translateTexts(textsToTranslate, targetLang);
 
   let index = 0;
   return {

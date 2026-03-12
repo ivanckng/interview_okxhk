@@ -27,7 +27,7 @@ class FredClient:
     }
 
     def __init__(self):
-        self.api_key = os.getenv("FRED_API_KEY", "44a14ba3f2efe0bff021560cec8704cf")
+        self.api_key = os.getenv("FRED_API_KEY")
         self._cache = get_market_cache()
 
     def _get_cache_key(self) -> str:

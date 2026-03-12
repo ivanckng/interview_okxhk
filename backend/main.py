@@ -25,6 +25,11 @@ class TranslateRequest(BaseModel):
     target_lang: str = "ZH"  # ZH 为中文，EN 为英文
 
 
+class TranslateBatchRequest(BaseModel):
+    texts: List[str]
+    target_lang: str = "ZH"
+
+
 # 新闻分析请求模型
 class NewsAnalysisRequest(BaseModel):
     news: List[Dict[str, Any]]
@@ -53,6 +58,7 @@ from agents.crypto_agent import get_crypto_aggregator
 from agents.news_analysis_agent import get_deepseek_news_analysis_agent
 from agents.competitor_agent import get_competitor_agent
 from agents.pulse_agent import get_pulse_agent
+from utils.runtime import get_allowed_origins, internal_scheduler_enabled
 
 # Global state
 processed_news: List[ProcessedNews] = []
@@ -95,17 +101,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"⚠️ Initial news fetch failed: {e}")
 
-    # Initialize scheduler with daily 7 AM refresh
-    scheduler = init_scheduler(refresh_hour=7)
-    # Register news refresh callback
+    scheduler = get_scheduler()
     scheduler.register_refresh_callback(_fetch_and_process_news)
+    if internal_scheduler_enabled():
+        init_scheduler(refresh_hour=7)
+    else:
+        print("ℹ️ Internal scheduler disabled; use Cloud Scheduler in production")
 
     yield
     
     # Shutdown
     print("🛑 Shutting down...")
     # Shutdown scheduler
-    get_scheduler().shutdown()
+    if internal_scheduler_enabled():
+        get_scheduler().shutdown()
     # Persist cache
     news_cache.persist()
     get_highlight_cache().persist()
@@ -124,7 +133,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -161,7 +170,7 @@ async def health_check():
         },
         "scheduler": {
             "last_refresh": scheduler.get_last_refresh().isoformat() if scheduler.get_last_refresh() else None,
-            "next_refresh": "Daily at 7:00 AM"
+            "next_refresh": "Daily at 7:00 AM" if internal_scheduler_enabled() else "Managed externally"
         }
     }
 
@@ -196,7 +205,7 @@ async def get_cache_status():
     scheduler = get_scheduler()
     return {
         "last_refresh": scheduler.get_last_refresh().isoformat() if scheduler.get_last_refresh() else None,
-        "next_scheduled_refresh": "Daily at 7:00 AM",
+        "next_scheduled_refresh": "Daily at 7:00 AM" if internal_scheduler_enabled() else "Managed externally",
         "cache_stats": {
             "news": get_news_cache().get_stats(),
             "highlights": get_highlight_cache().get_stats(),
@@ -1159,30 +1168,15 @@ async def get_pulse_comprehensive(language: str = "zh"):
         }
 
 
-async def scheduled_news_refresh():
-    """Background task to refresh news every 30 minutes"""
-    while True:
-        await asyncio.sleep(1800)  # 30 minutes
-        await _fetch_and_process_news()
+async def _translate_via_deepl(texts: List[str], target_lang: str) -> List[str]:
+    deepl_api_key = os.getenv("DEEPL_API_KEY")
+    normalized = target_lang.upper()
 
+    if not texts:
+        return texts
+    if not deepl_api_key:
+        return texts
 
-@app.on_event("startup")
-async def start_background_tasks():
-    """Start background tasks"""
-    asyncio.create_task(scheduled_news_refresh())
-
-
-@app.post("/api/translate")
-async def translate_text(request: TranslateRequest):
-    """
-    Translate text using DeepL API (proxy to avoid CORS issues)
-    """
-    deepl_api_key = os.getenv("DEEPL_API_KEY", "920de657-7d74-4b67-9f1f-55e691bab855:fx")
-    
-    # 如果目标是英文，直接返回原文
-    if request.target_lang.upper() == "EN":
-        return {"translated_text": request.text}
-    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -1192,33 +1186,45 @@ async def translate_text(request: TranslateRequest):
                     "Authorization": f"DeepL-Auth-Key {deepl_api_key}"
                 },
                 json={
-                    "text": [request.text],
-                    "target_lang": request.target_lang.upper(),
-                    "source_lang": "EN"
+                    "text": texts,
+                    "target_lang": normalized,
                 },
                 timeout=30.0
             )
-            
+
             if response.status_code != 200:
                 print(f"⚠️ DeepL translation failed ({response.status_code}), falling back to source text")
-                return {
-                    "translated_text": request.text,
-                    "fallback": True,
-                    "reason": f"DeepL API error: {response.text}"
-                }
-            
+                return texts
+
             data = response.json()
-            translated_text = data.get("translations", [{}])[0].get("text", request.text)
-            
-            return {"translated_text": translated_text}
+            translations = data.get("translations", [])
+            return [
+                translations[index].get("text", original_text) if index < len(translations) else original_text
+                for index, original_text in enumerate(texts)
+            ]
 
     except httpx.RequestError as e:
         print(f"⚠️ Translation service unavailable, falling back to source text: {e}")
-        return {
-            "translated_text": request.text,
-            "fallback": True,
-            "reason": f"Translation service unavailable: {str(e)}"
-        }
+        return texts
+
+
+@app.post("/api/translate")
+async def translate_text(request: TranslateRequest):
+    """
+    Translate text using DeepL API (proxy to avoid CORS issues)
+    """
+    translated = await _translate_via_deepl([request.text], request.target_lang)
+    fallback = translated[0] == request.text
+    return {"translated_text": translated[0], "fallback": fallback}
+
+
+@app.post("/api/translate/batch")
+async def translate_batch(request: TranslateBatchRequest):
+    translated = await _translate_via_deepl(request.texts, request.target_lang)
+    return {
+        "translated_texts": translated,
+        "fallback": translated == request.texts,
+    }
 
 
 @app.get("/api/news/breaking")

@@ -22,7 +22,7 @@ class GNewsClient:
     STALE_TTL = 7200
 
     def __init__(self):
-        self.api_key = os.getenv("GNEWS_API_KEY", "9785b9f8aa8b8a41bb4b353f8cf3e771")
+        self.api_key = os.getenv("GNEWS_API_KEY")
         self._cache = get_market_cache()
 
     def _get_cache_key(self, category: str = "world") -> str:

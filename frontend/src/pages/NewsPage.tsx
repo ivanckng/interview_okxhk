@@ -14,6 +14,7 @@ import { translateHighlightSummary } from '../services/apiTranslation';
 import { useCachedAPI } from '../hooks/useCachedAPI';
 import * as cacheService from '../services/cache';
 import type { ProcessedNews, HighlightSummary } from '../services/api';
+import { apiUrl } from '../services/config';
 
 const priorityConfig = {
   high: { color: 'text-red-400', bg: 'bg-red-500/10' },
@@ -146,7 +147,7 @@ export const NewsPage = () => {
       try {
         console.log('[News AI] Fetching analysis with', cachedNews.length, 'news items, language:', language);
 
-        const response = await fetch('http://localhost:8000/api/news/analysis', {
+        const response = await fetch(apiUrl('/api/news/analysis'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ news: cachedNews }),

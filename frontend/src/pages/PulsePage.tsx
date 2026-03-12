@@ -10,6 +10,7 @@ import {
 } from '../services/apiTranslation';
 import * as cacheService from '../services/cache';
 import type { PulseSummary, PulseRecommendation, TrendPrediction, ProcessedNews } from '../services/api';
+import { apiUrl } from '../services/config';
 
 
 export const PulsePage = () => {
@@ -63,7 +64,7 @@ export const PulsePage = () => {
       console.log('[Pulse AI] Fetching comprehensive analysis, language:', language);
 
       // Fetch comprehensive analysis from all 4 pages
-      const comprehensiveRes = await fetch(`http://localhost:8000/api/pulse/comprehensive?language=${language}`);
+      const comprehensiveRes = await fetch(apiUrl(`/api/pulse/comprehensive?language=${language}`));
       let comprehensiveData = null;
       if (comprehensiveRes.ok) {
         comprehensiveData = await comprehensiveRes.json();
