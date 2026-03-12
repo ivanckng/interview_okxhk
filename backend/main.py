@@ -40,6 +40,13 @@ load_dotenv(env_path)
 
 from utils.cache import get_news_cache, get_highlight_cache, get_market_cache
 from utils.scheduler import init_scheduler, get_scheduler
+from utils.cloud_cache import (
+    is_fresh,
+    is_serveable_stale,
+    read_shared_cache,
+    schedule_stale_refresh,
+    write_shared_cache,
+)
 from agents.deepseek_agent import get_deepseek_agent
 from agents.qwen_agent import get_qwen_agent
 from data_sources.bwenews import get_bwenews_client
@@ -59,6 +66,7 @@ from agents.news_analysis_agent import get_deepseek_news_analysis_agent
 from agents.competitor_agent import get_competitor_agent
 from agents.pulse_agent import get_pulse_agent
 from utils.runtime import get_allowed_origins, internal_scheduler_enabled
+from utils.cache_keys import stable_hash
 
 # Global state
 processed_news: List[ProcessedNews] = []
@@ -197,6 +205,20 @@ async def global_refresh_cache():
     }
 
 
+@app.post("/api/cache/prewarm")
+async def prewarm_cache():
+    """
+    Prewarm the heaviest shared caches for first-visit performance.
+    Intended for Cloud Scheduler.
+    """
+    warmed = await _prewarm_dashboard_caches()
+    return {
+        "message": "Cache prewarm completed",
+        "warmed": warmed,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
 @app.get("/api/cache/status")
 async def get_cache_status():
     """
@@ -296,6 +318,248 @@ async def _fetch_and_process_news():
         
     except Exception as e:
         print(f"❌ Error in news refresh: {e}")
+
+
+async def _build_markets_analysis_response() -> Dict[str, Any]:
+    aggregator = get_markets_aggregator()
+    analyst = get_deepseek_markets_agent()
+
+    aggregated_result = await aggregator.aggregate_all_data()
+    if aggregated_result.get("error"):
+        return aggregated_result
+
+    markets_data = aggregated_result.get("markets_data", {})
+    analysis_payload = aggregated_result.get("ai_analysis", {})
+
+    if not analysis_payload:
+        analysis = await analyst.analyze_markets(markets_data)
+        analysis_payload = analysis.get("analysis", {})
+        last_updated = analysis.get("cached_at", "")
+    else:
+        last_updated = aggregated_result.get("cached_at", "")
+
+    return {
+        "markets_data": markets_data,
+        "ai_analysis": analysis_payload,
+        "last_updated": last_updated,
+        "cached_at": datetime.utcnow().isoformat(),
+        "refresh_interval": "10 minutes",
+    }
+
+
+async def _build_crypto_analysis_response() -> Dict[str, Any]:
+    aggregator = get_crypto_aggregator()
+    analyst = get_deepseek_crypto_agent()
+
+    crypto_data = await aggregator.aggregate_all_data()
+    if crypto_data.get("error"):
+        return crypto_data
+
+    analysis = await analyst.analyze_crypto(crypto_data)
+    payload = {
+        "crypto_data": crypto_data,
+        "ai_analysis": analysis.get("analysis", {}),
+        "last_updated": analysis.get("cached_at", ""),
+        "cached_at": datetime.utcnow().isoformat(),
+        "refresh_interval": "10 minutes",
+    }
+
+    get_market_cache().set(
+        "latest_crypto_analysis",
+        {
+            "analysis": analysis.get("analysis", {}),
+            "crypto_data": crypto_data,
+            "cached_at": analysis.get("cached_at", ""),
+        },
+        ttl=600,
+    )
+
+    return payload
+
+
+async def _build_pulse_comprehensive_response(language: str) -> Dict[str, Any]:
+    news_data = {
+        "news": processed_news[:20],
+        "trending": [n for n in processed_news if n.hot_score >= 70][:5],
+        "highlight": get_highlight_cache().get("news_highlight") or {},
+    }
+
+    # Markets data - read from cache only to avoid re-fetching limited sources
+    markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}, "markets_data": {}}
+    cached_markets = get_market_cache().get("markets_ai_analysis")
+    if cached_markets and isinstance(cached_markets, dict):
+        markets_data["ai_analysis"] = cached_markets.get("ai_analysis", {})
+        markets_data["markets_data"] = cached_markets.get("markets_data", {})
+        markets_data["highlight"] = cached_markets.get("markets_data", {}).get("highlight", {})
+
+    competitors_data = {"announcements": [], "ai_analysis": {}}
+    try:
+        bybit_client = get_bybit_client()
+        binance_client = get_binance_client()
+        bitget_client = get_bitget_client()
+        competitor_agent = get_competitor_agent()
+
+        bybit_ann = bybit_client.get_announcements(locale="en-US", limit=10)
+        binance_ann = binance_client.get_announcements(limit=10)
+        bitget_ann = bitget_client.get_announcements(language="en_US", limit=10)
+
+        competitors_data["announcements"] = bybit_ann + binance_ann + bitget_ann
+        competitors_data["ai_analysis"] = await competitor_agent.generate_competitor_summary(
+            competitors_data["announcements"], language=language
+        )
+    except Exception as e:
+        print(f"Error fetching competitors data: {e}")
+
+    crypto_data = {"coins": [], "global": {}, "highlight": {}, "ai_analysis": {}}
+    cached_crypto_prices = get_market_cache().get("crypto_prices_20")
+    if cached_crypto_prices and isinstance(cached_crypto_prices, dict):
+        crypto_data["coins"] = cached_crypto_prices.get("coins", [])
+        crypto_data["global"] = cached_crypto_prices.get("global", {})
+        crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
+
+    cached_crypto_analysis = get_market_cache().get("latest_crypto_analysis")
+    if cached_crypto_analysis and isinstance(cached_crypto_analysis, dict):
+        crypto_data["ai_analysis"] = cached_crypto_analysis.get("analysis", {})
+
+    pulse_agent = get_pulse_agent()
+    comprehensive_analysis = await pulse_agent.generate_comprehensive_analysis(
+        news_data=news_data,
+        markets_data=markets_data,
+        competitors_data=competitors_data,
+        crypto_data=crypto_data,
+        language=language
+    )
+
+    return {
+        "comprehensive_analysis": comprehensive_analysis,
+        "data_sources": {
+            "news_count": len(news_data["news"]),
+            "markets_indicators": len(markets_data.get("data", {}).get("indicators", [])),
+            "competitors_announcements": len(competitors_data["announcements"]),
+            "crypto_coins": len(crypto_data["coins"]),
+        },
+        "last_updated": datetime.utcnow().isoformat(),
+        "cached_at": datetime.utcnow().isoformat(),
+    }
+
+
+def _competitors_analysis_cache_key(request: "CompetitorsAnalysisRequest") -> str:
+    payload = {
+        "language": request.language,
+        "bybit": [{"id": item.get("id"), "title": item.get("title")} for item in request.bybit[:10]],
+        "binance": [{"id": item.get("id"), "title": item.get("title")} for item in request.binance[:10]],
+        "bitget": [{"id": item.get("id"), "title": item.get("title")} for item in request.bitget[:10]],
+    }
+    return f"competitors_analysis_{stable_hash(payload)}"
+
+
+async def _build_competitors_analysis_response(request: "CompetitorsAnalysisRequest") -> Dict[str, Any]:
+    agent = get_competitor_agent()
+    all_analyzed = []
+
+    if request.bybit:
+        bybit_analyzed = await agent.analyze_bybit_announcements(request.bybit)
+        all_analyzed.extend(bybit_analyzed)
+
+    if request.binance:
+        binance_analyzed = await agent.analyze_binance_announcements(request.binance)
+        all_analyzed.extend(binance_analyzed)
+
+    if request.bitget:
+        bitget_analyzed = await agent.analyze_bitget_announcements(request.bitget)
+        all_analyzed.extend(bitget_analyzed)
+
+    summary = await agent.generate_competitor_summary(all_analyzed, language=request.language)
+
+    return {
+        "ai_analysis": summary,
+        "analyzed_count": len(all_analyzed),
+        "last_updated": datetime.utcnow().isoformat(),
+        "cached_at": datetime.utcnow().isoformat(),
+        "refresh_interval": "10 minutes",
+    }
+
+
+async def _build_news_highlight_payload() -> Dict[str, Any]:
+    agent = get_deepseek_agent()
+    highlight = await agent.generate_news_highlight(processed_news)
+    return highlight.model_dump()
+
+
+async def _build_competitors_page_highlight(language: str = "zh") -> Dict[str, Any]:
+    bybit_client = get_bybit_client()
+    binance_client = get_binance_client()
+    bitget_client = get_bitget_client()
+    competitor_agent = get_competitor_agent()
+
+    bybit_ann = bybit_client.get_announcements(locale="zh-CN" if language == "zh" else "en-US", limit=10)
+    binance_ann = binance_client.get_announcements(limit=10)
+    bitget_ann = bitget_client.get_announcements(language="zh_CN" if language == "zh" else "en_US", limit=10)
+    all_announcements = bybit_ann + binance_ann + bitget_ann
+
+    summary = await competitor_agent.generate_competitor_summary(all_announcements, language=language)
+    payload = {
+        **summary,
+        "announcements": all_announcements,
+        "cached_at": datetime.utcnow().isoformat(),
+    }
+    return payload
+
+
+async def _refresh_markets_analysis_cache(cache_key: str) -> None:
+    result = await _build_markets_analysis_response()
+    write_shared_cache(cache_key, result, ttl=600, local_cache=get_market_cache())
+
+
+async def _refresh_crypto_analysis_cache(cache_key: str) -> None:
+    result = await _build_crypto_analysis_response()
+    write_shared_cache(cache_key, result, ttl=300, local_cache=get_market_cache())
+
+
+async def _refresh_pulse_comprehensive_cache(cache_key: str, language: str) -> None:
+    result = await _build_pulse_comprehensive_response(language)
+    write_shared_cache(cache_key, result, ttl=1200, local_cache=get_market_cache())
+
+
+async def _refresh_competitors_analysis_cache(cache_key: str, request: "CompetitorsAnalysisRequest") -> None:
+    result = await _build_competitors_analysis_response(request)
+    write_shared_cache(cache_key, result, ttl=600, local_cache=get_highlight_cache())
+
+
+async def _prewarm_dashboard_caches() -> Dict[str, Any]:
+    warmed: Dict[str, Any] = {}
+
+    news_highlight = await _build_news_highlight_payload()
+    get_highlight_cache().set("news_highlight", news_highlight, ttl=1800)
+    warmed["news_highlight"] = True
+
+    markets_result = await _build_markets_analysis_response()
+    write_shared_cache("markets_analysis_response_v1", markets_result, ttl=600, local_cache=get_market_cache())
+    # Keep compatibility with existing pulse/chat reads.
+    get_market_cache().set(
+        "markets_ai_analysis",
+        {
+            "markets_data": markets_result.get("markets_data", {}),
+            "ai_analysis": markets_result.get("ai_analysis", {}),
+            "cached_at": markets_result.get("cached_at"),
+        },
+        ttl=600,
+    )
+    warmed["markets_analysis"] = True
+
+    crypto_result = await _build_crypto_analysis_response()
+    write_shared_cache("crypto_analysis_response_v1", crypto_result, ttl=300, local_cache=get_market_cache())
+    warmed["crypto_analysis"] = True
+
+    competitors_highlight = await _build_competitors_page_highlight(language="zh")
+    get_highlight_cache().set("competitors_highlight", competitors_highlight, ttl=600)
+    warmed["competitors_highlight"] = True
+
+    pulse_result = await _build_pulse_comprehensive_response("zh")
+    write_shared_cache("pulse_comprehensive_zh", pulse_result, ttl=1200, local_cache=get_market_cache())
+    warmed["pulse_comprehensive_zh"] = True
+
+    return warmed
 
 
 # ==================== Highlights API ====================
@@ -811,29 +1075,21 @@ async def get_markets_analysis():
     Get AI analysis of all markets data
     Updates every 10 minutes
     """
-    aggregator = get_markets_aggregator()
-    analyst = get_deepseek_markets_agent()
-    
-    aggregated_result = await aggregator.aggregate_all_data()
-    if aggregated_result.get("error"):
-        return aggregated_result
+    cache_key = "markets_analysis_response_v1"
+    cached = read_shared_cache(cache_key, local_cache=get_market_cache())
+    if cached and is_fresh(cached, 600):
+        return cached
 
-    markets_data = aggregated_result.get("markets_data", {})
-    analysis_payload = aggregated_result.get("ai_analysis", {})
+    if cached and is_serveable_stale(cached, 3600):
+        schedule_stale_refresh(
+            "lock_markets_analysis_refresh",
+            lambda: _refresh_markets_analysis_cache(cache_key),
+            ttl=120,
+        )
+        return {**cached, "stale": True}
 
-    if not analysis_payload:
-        analysis = await analyst.analyze_markets(markets_data)
-        analysis_payload = analysis.get("analysis", {})
-        last_updated = analysis.get("cached_at", "")
-    else:
-        last_updated = aggregated_result.get("cached_at", "")
-
-    return {
-        "markets_data": markets_data,
-        "ai_analysis": analysis_payload,
-        "last_updated": last_updated,
-        "refresh_interval": "10 minutes",
-    }
+    result = await _build_markets_analysis_response()
+    return write_shared_cache(cache_key, result, ttl=600, local_cache=get_market_cache())
 
 
 @app.get("/api/crypto/analysis")
@@ -842,30 +1098,21 @@ async def get_crypto_analysis():
     Get AI analysis of crypto market data
     Updates every 10 minutes
     """
-    aggregator = get_crypto_aggregator()
-    analyst = get_deepseek_crypto_agent()
-    
-    crypto_data = await aggregator.aggregate_all_data()
-    if crypto_data.get("error"):
-        return crypto_data
+    cache_key = "crypto_analysis_response_v1"
+    cached = read_shared_cache(cache_key, local_cache=get_market_cache())
+    if cached and is_fresh(cached, 300):
+        return cached
 
-    analysis = await analyst.analyze_crypto(crypto_data)
-    get_market_cache().set(
-        "latest_crypto_analysis",
-        {
-            "analysis": analysis.get("analysis", {}),
-            "crypto_data": crypto_data,
-            "cached_at": analysis.get("cached_at", ""),
-        },
-        ttl=600,
-    )
+    if cached and is_serveable_stale(cached, 1800):
+        schedule_stale_refresh(
+            "lock_crypto_analysis_refresh",
+            lambda: _refresh_crypto_analysis_cache(cache_key),
+            ttl=120,
+        )
+        return {**cached, "stale": True}
 
-    return {
-        "crypto_data": crypto_data,
-        "ai_analysis": analysis.get("analysis", {}),
-        "last_updated": analysis.get("cached_at", ""),
-        "refresh_interval": "10 minutes",
-    }
+    result = await _build_crypto_analysis_response()
+    return write_shared_cache(cache_key, result, ttl=300, local_cache=get_market_cache())
 
 
 @app.post("/api/news/analysis")
@@ -902,32 +1149,21 @@ async def get_competitors_analysis(request: CompetitorsAnalysisRequest):
     Updates every 10 minutes
     """
     try:
-        agent = get_competitor_agent()
+        cache_key = _competitors_analysis_cache_key(request)
+        cached = read_shared_cache(cache_key, local_cache=get_highlight_cache())
+        if cached and is_fresh(cached, 600):
+            return cached
 
-        # Analyze each exchange's announcements
-        all_analyzed = []
+        if cached and is_serveable_stale(cached, 3600):
+            schedule_stale_refresh(
+                f"lock_{cache_key}",
+                lambda: _refresh_competitors_analysis_cache(cache_key, request),
+                ttl=120,
+            )
+            return {**cached, "stale": True}
 
-        if request.bybit:
-            bybit_analyzed = await agent.analyze_bybit_announcements(request.bybit)
-            all_analyzed.extend(bybit_analyzed)
-
-        if request.binance:
-            binance_analyzed = await agent.analyze_binance_announcements(request.binance)
-            all_analyzed.extend(binance_analyzed)
-
-        if request.bitget:
-            bitget_analyzed = await agent.analyze_bitget_announcements(request.bitget)
-            all_analyzed.extend(bitget_analyzed)
-
-        # Generate overall competitor analysis summary
-        summary = await agent.generate_competitor_summary(all_analyzed, language=request.language)
-
-        return {
-            "ai_analysis": summary,
-            "analyzed_count": len(all_analyzed),
-            "last_updated": datetime.utcnow().isoformat(),
-            "refresh_interval": "10 minutes",
-        }
+        result = await _build_competitors_analysis_response(request)
+        return write_shared_cache(cache_key, result, ttl=600, local_cache=get_highlight_cache())
     except Exception as e:
         print(f"Error in competitors analysis: {e}")
         return {
@@ -1094,89 +1330,23 @@ async def get_pulse_comprehensive(language: str = "zh"):
     Get comprehensive analysis from all four pages with Redis caching
     Cache TTL: 20 minutes
     """
-    from utils.redis_cache import cache_get, cache_set
-    
-    # Try cache first
     cache_key = f"pulse_comprehensive_{language}"
-    cached = cache_get(cache_key)
-    if cached:
-        print(f"✅ Redis cache hit: {cache_key}")
+    cached = read_shared_cache(cache_key, local_cache=get_market_cache())
+    if cached and is_fresh(cached, 1200):
+        print(f"✅ Shared cache hit: {cache_key}")
         return cached
 
-    try:
-        # Collect data from all four pages
-        news_data = {
-            "news": processed_news[:20],
-            "trending": [n for n in processed_news if n.hot_score >= 70][:5],
-            "highlight": get_highlight_cache().get("news_highlight") or {},
-        }
-
-        # Markets data - read from cache only to avoid re-fetching limited sources
-        markets_data = {"data": {}, "highlight": {}, "ai_analysis": {}, "markets_data": {}}
-        cached_markets = get_market_cache().get("markets_ai_analysis")
-        if cached_markets and isinstance(cached_markets, dict):
-            markets_data["ai_analysis"] = cached_markets.get("ai_analysis", {})
-            markets_data["markets_data"] = cached_markets.get("markets_data", {})
-            markets_data["highlight"] = cached_markets.get("markets_data", {}).get("highlight", {})
-
-        # Competitors data
-        competitors_data = {"announcements": [], "ai_analysis": {}}
-        try:
-            bybit_client = get_bybit_client()
-            binance_client = get_binance_client()
-            bitget_client = get_bitget_client()
-            competitor_agent = get_competitor_agent()
-
-            bybit_ann = bybit_client.get_announcements(locale="en-US", limit=10)
-            binance_ann = binance_client.get_announcements(limit=10)
-            bitget_ann = bitget_client.get_announcements(language="en_US", limit=10)
-
-            competitors_data["announcements"] = bybit_ann + binance_ann + bitget_ann
-
-            # Get AI analysis
-            competitors_data["ai_analysis"] = await competitor_agent.generate_competitor_summary(
-                competitors_data["announcements"], language=language
-            )
-        except Exception as e:
-            print(f"Error fetching competitors data: {e}")
-
-        # Crypto data - read from cache only to avoid extra CoinGecko calls
-        crypto_data = {"coins": [], "global": {}, "highlight": {}, "ai_analysis": {}}
-        cached_crypto_prices = get_market_cache().get("crypto_prices_20")
-        if cached_crypto_prices and isinstance(cached_crypto_prices, dict):
-            crypto_data["coins"] = cached_crypto_prices.get("coins", [])
-            crypto_data["global"] = cached_crypto_prices.get("global", {})
-            crypto_data["highlight"] = cached_crypto_prices.get("highlight", {})
-
-        cached_crypto_analysis = get_market_cache().get("latest_crypto_analysis")
-        if cached_crypto_analysis and isinstance(cached_crypto_analysis, dict):
-            crypto_data["ai_analysis"] = cached_crypto_analysis.get("analysis", {})
-
-        # Generate comprehensive analysis using Pulse Agent
-        pulse_agent = get_pulse_agent()
-        comprehensive_analysis = await pulse_agent.generate_comprehensive_analysis(
-            news_data=news_data,
-            markets_data=markets_data,
-            competitors_data=competitors_data,
-            crypto_data=crypto_data,
-            language=language
+    if cached and is_serveable_stale(cached, 3600):
+        schedule_stale_refresh(
+            f"lock_{cache_key}",
+            lambda: _refresh_pulse_comprehensive_cache(cache_key, language),
+            ttl=180,
         )
+        return {**cached, "stale": True}
 
-        result = {
-            "comprehensive_analysis": comprehensive_analysis,
-            "data_sources": {
-                "news_count": len(news_data["news"]),
-                "markets_indicators": len(markets_data.get("data", {}).get("indicators", [])),
-                "competitors_announcements": len(competitors_data["announcements"]),
-                "crypto_coins": len(crypto_data["coins"]),
-            },
-            "last_updated": datetime.utcnow().isoformat(),
-        }
-
-        # Save to Redis (20 minutes TTL)
-        cache_set(cache_key, result, 1200)
-
-        return result
+    try:
+        result = await _build_pulse_comprehensive_response(language)
+        return write_shared_cache(cache_key, result, ttl=1200, local_cache=get_market_cache())
 
     except Exception as e:
         print(f"Error in comprehensive pulse analysis: {e}")

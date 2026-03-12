@@ -79,11 +79,119 @@ const economyIndicatorsMock = {
   },
 };
 
+const formatIndicatorPeriod = (period: string, lang: 'en' | 'zh') => {
+  if (!period) {
+    return lang === 'zh' ? '统计期：待更新' : 'Period: pending';
+  }
+
+  const monthlyMatch = period.match(/^(\d{4})\s+([A-Za-z]{3})$/);
+  if (monthlyMatch) {
+    const [, year, month] = monthlyMatch;
+    const monthNames: Record<string, string> = {
+      Jan: '1月',
+      Feb: '2月',
+      Mar: '3月',
+      Apr: '4月',
+      May: '5月',
+      Jun: '6月',
+      Jul: '7月',
+      Aug: '8月',
+      Sep: '9月',
+      Oct: '10月',
+      Nov: '11月',
+      Dec: '12月',
+    };
+
+    if (lang === 'zh') {
+      return `统计期：${year}年${monthNames[month] || month}`;
+    }
+
+    return `Period: ${month} ${year}`;
+  }
+
+  const quarterlyMatch = period.match(/^(\d{4})\s+Q([1-4])$/i);
+  if (quarterlyMatch) {
+    const [, year, quarter] = quarterlyMatch;
+    return lang === 'zh'
+      ? `统计期：${year}年 Q${quarter}`
+      : `Period: ${year} Q${quarter}`;
+  }
+
+  const annualMatch = period.match(/^(\d{4})$/);
+  if (annualMatch) {
+    const [, year] = annualMatch;
+    return lang === 'zh' ? `统计期：${year}年` : `Period: ${year}`;
+  }
+
+  return lang === 'zh' ? `统计期：${period}` : `Period: ${period}`;
+};
+
+const formatIndicatorPeriodFromFields = ({
+  period,
+  year,
+  quarter,
+  month,
+  lang,
+}: {
+  period?: string;
+  year?: number | string;
+  quarter?: string;
+  month?: string;
+  lang: 'en' | 'zh';
+}) => {
+  if (year && quarter) {
+    const normalizedQuarter = quarter.startsWith('Q') ? quarter : `Q${quarter}`;
+    return lang === 'zh'
+      ? `统计期：${year}年 ${normalizedQuarter}`
+      : `Period: ${year} ${normalizedQuarter}`;
+  }
+
+  if (year && month) {
+    const monthNames: Record<string, string> = {
+      Jan: '1月',
+      Feb: '2月',
+      Mar: '3月',
+      Apr: '4月',
+      May: '5月',
+      Jun: '6月',
+      Jul: '7月',
+      Aug: '8月',
+      Sep: '9月',
+      Oct: '10月',
+      Nov: '11月',
+      Dec: '12月',
+    };
+
+    if (lang === 'zh') {
+      return `统计期：${year}年${monthNames[month] || month}`;
+    }
+
+    return `Period: ${month} ${year}`;
+  }
+
+  if (period) {
+    const normalizedPeriod = period.trim();
+    const periodHasMoreDetail = !year || normalizedPeriod !== String(year);
+    if (periodHasMoreDetail) {
+      return formatIndicatorPeriod(normalizedPeriod, lang);
+    }
+  }
+
+  if (year) {
+    return lang === 'zh' ? `统计期：${year}年` : `Period: ${year}`;
+  }
+
+  return formatIndicatorPeriod(period || '', lang);
+};
+
 // 经济指标卡片
 const IndicatorCard = ({ 
   label, 
   value, 
   period,
+  year,
+  quarter,
+  month,
   unit,
   rawValue,
   isUnemployment = false,
@@ -94,6 +202,9 @@ const IndicatorCard = ({
   label: string; 
   value: number; 
   period: string;
+  year?: number | string;
+  quarter?: string;
+  month?: string;
   unit: string;
   rawValue?: number | null;
   isUnemployment?: boolean;
@@ -125,7 +236,9 @@ const IndicatorCard = ({
           GDP: {isChinaGDP ? '¥' : '$'}{rawValue.toLocaleString()}T <span className="text-[9px]">({nominalLabel})</span>
         </div>
       )}
-      <div className="text-okx-text-muted text-[10px]">{period}</div>
+      <div className="text-okx-text-muted text-[10px]">
+        {formatIndicatorPeriodFromFields({ period, year, quarter, month, lang })}
+      </div>
     </div>
   );
 };
@@ -643,6 +756,7 @@ export const MarketsPage = () => {
               label={indicators.gdpAnnual}
               value={getIndicatorData('us', 'gdp_annual').value}
               period={getIndicatorData('us', 'gdp_annual').period}
+              year={getIndicatorData('us', 'gdp_annual').year}
               unit={getIndicatorData('us', 'gdp_annual').unit}
               rawValue={getIndicatorData('us', 'gdp_annual').raw_value}
               isGDP={true}
@@ -652,6 +766,8 @@ export const MarketsPage = () => {
               label={indicators.gdpQuarterly}
               value={getIndicatorData('us', 'gdp_quarterly').value}
               period={getIndicatorData('us', 'gdp_quarterly').period}
+              year={getIndicatorData('us', 'gdp_quarterly').year}
+              quarter={getIndicatorData('us', 'gdp_quarterly').quarter}
               unit={getIndicatorData('us', 'gdp_quarterly').unit}
               rawValue={getIndicatorData('us', 'gdp_quarterly').raw_value}
               isGDP={true}
@@ -661,6 +777,8 @@ export const MarketsPage = () => {
               label={indicators.cpi}
               value={getIndicatorData('us', 'cpi').value}
               period={getIndicatorData('us', 'cpi').period}
+              year={getIndicatorData('us', 'cpi').year}
+              month={getIndicatorData('us', 'cpi').month}
               unit={getIndicatorData('us', 'cpi').unit}
               lang={language}
             />
@@ -668,6 +786,8 @@ export const MarketsPage = () => {
               label={indicators.ppi}
               value={getIndicatorData('us', 'ppi').value}
               period={getIndicatorData('us', 'ppi').period}
+              year={getIndicatorData('us', 'ppi').year}
+              month={getIndicatorData('us', 'ppi').month}
               unit={getIndicatorData('us', 'ppi').unit}
               lang={language}
             />
@@ -675,6 +795,8 @@ export const MarketsPage = () => {
               label={indicators.unemployment}
               value={getIndicatorData('us', 'unemployment').value}
               period={getIndicatorData('us', 'unemployment').period}
+              year={getIndicatorData('us', 'unemployment').year}
+              month={getIndicatorData('us', 'unemployment').month}
               unit={getIndicatorData('us', 'unemployment').unit}
               isUnemployment={true}
               lang={language}
@@ -696,6 +818,8 @@ export const MarketsPage = () => {
               label={indicators.gdpAnnual}
               value={getIndicatorData('cn', 'gdp_annual').value}
               period={getIndicatorData('cn', 'gdp_annual').period}
+              year={getIndicatorData('cn', 'gdp_annual').year}
+              quarter={getIndicatorData('cn', 'gdp_annual').quarter}
               unit={getIndicatorData('cn', 'gdp_annual').unit}
               rawValue={getIndicatorData('cn', 'gdp_annual').raw_value}
               isGDP={true}
@@ -705,7 +829,9 @@ export const MarketsPage = () => {
             <IndicatorCard
               label={indicators.gdpQuarterly}
               value={getIndicatorData('cn', 'gdp_quarterly').value}
-              period={`${getIndicatorData('cn', 'gdp_quarterly').year} ${getIndicatorData('cn', 'gdp_quarterly').quarter?.startsWith('Q') ? getIndicatorData('cn', 'gdp_quarterly').quarter : 'Q' + getIndicatorData('cn', 'gdp_quarterly').quarter}`}
+              period={getIndicatorData('cn', 'gdp_quarterly').period}
+              year={getIndicatorData('cn', 'gdp_quarterly').year}
+              quarter={getIndicatorData('cn', 'gdp_quarterly').quarter}
               unit={getIndicatorData('cn', 'gdp_quarterly').unit}
               rawValue={getIndicatorData('cn', 'gdp_quarterly').raw_value}
               isGDP={true}
@@ -716,6 +842,8 @@ export const MarketsPage = () => {
               label={indicators.cpi}
               value={getIndicatorData('cn', 'cpi').value}
               period={getIndicatorData('cn', 'cpi').period}
+              year={getIndicatorData('cn', 'cpi').year}
+              month={getIndicatorData('cn', 'cpi').month}
               unit={getIndicatorData('cn', 'cpi').unit}
               lang={language}
             />
@@ -723,6 +851,8 @@ export const MarketsPage = () => {
               label={indicators.ppi}
               value={getIndicatorData('cn', 'ppi').value}
               period={getIndicatorData('cn', 'ppi').period}
+              year={getIndicatorData('cn', 'ppi').year}
+              month={getIndicatorData('cn', 'ppi').month}
               unit={getIndicatorData('cn', 'ppi').unit}
               lang={language}
             />
@@ -730,6 +860,8 @@ export const MarketsPage = () => {
               label={indicators.unemployment}
               value={getIndicatorData('cn', 'unemployment').value}
               period={getIndicatorData('cn', 'unemployment').period}
+              year={getIndicatorData('cn', 'unemployment').year}
+              month={getIndicatorData('cn', 'unemployment').month}
               unit={getIndicatorData('cn', 'unemployment').unit}
               isUnemployment={true}
               lang={language}

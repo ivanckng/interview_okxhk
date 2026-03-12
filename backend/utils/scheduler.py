@@ -68,6 +68,14 @@ class CacheScheduler:
             except Exception as e:
                 print(f"⚠️  加密貨幣價格預熱失敗：{e}")
 
+            print("🔥 預熱核心儀表盤緩存...")
+            try:
+                from main import _prewarm_dashboard_caches
+                warmed = await _prewarm_dashboard_caches()
+                print(f"✅ 已預熱核心緩存: {', '.join(k for k, ok in warmed.items() if ok)}")
+            except Exception as e:
+                print(f"⚠️  核心儀表盤預熱失敗：{e}")
+
             self._last_refresh = datetime.now()
             print(f"✅ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 全局緩存刷新完成")
             print(f"{'='*60}\n")

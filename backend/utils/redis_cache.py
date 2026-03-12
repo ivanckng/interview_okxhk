@@ -120,6 +120,23 @@ class RedisCache:
             print(f"⚠️ Redis delete error: {e}")
             return False
 
+    def set_if_absent(self, key: str, value: Any, ttl: int = 60) -> bool:
+        """僅在 key 不存在時設置值，用於刷新鎖"""
+        client = self._get_client()
+        if not client:
+            return False
+
+        try:
+            if isinstance(value, (dict, list)):
+                data = json.dumps(value, ensure_ascii=False, default=str)
+            else:
+                data = str(value)
+
+            return bool(client.set(name=key, value=data, ex=ttl, nx=True))
+        except Exception as e:
+            print(f"⚠️ Redis set_if_absent error: {e}")
+            return False
+
     def exists(self, key: str) -> bool:
         """檢查鍵是否存在"""
         client = self._get_client()
@@ -220,3 +237,8 @@ def cache_delete(key: str) -> bool:
 def cache_exists(key: str) -> bool:
     """檢查緩存是否存在"""
     return get_redis_cache().exists(key)
+
+
+def cache_set_if_absent(key: str, value: Any, ttl: int = 60) -> bool:
+    """僅在緩存鍵不存在時設置值"""
+    return get_redis_cache().set_if_absent(key, value, ttl)
