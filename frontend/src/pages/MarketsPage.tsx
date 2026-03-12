@@ -347,11 +347,11 @@ export const MarketsPage = () => {
     // 定时刷新：每 10 分钟
     const interval = setInterval(() => fetchAIAnalysis(false), 600000);
 
-    // 页面可见性检测：切回标签页时刷新
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[MarketsPage] Page visible, refreshing AI analysis');
-        fetchAIAnalysis(true);
+        console.log('[MarketsPage] Page visible, checking cache for AI analysis');
+        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
       }
     };
 
@@ -405,11 +405,11 @@ export const MarketsPage = () => {
     // 首次加载
     fetchBreakingNews();
 
-    // 页面可见性检测：切回标签页时刷新
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[MarketsPage] Page visible, refreshing news');
-        fetchBreakingNews(true);
+        console.log('[MarketsPage] Page visible, checking cache for breaking news');
+        fetchBreakingNews(false); // 优先走缓存，缓存过期才请求 API
       }
     };
 

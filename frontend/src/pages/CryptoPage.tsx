@@ -162,11 +162,11 @@ export const CryptoPage = () => {
     // 定时刷新：每 15 分钟
     const interval = setInterval(() => fetchAIAnalysis(false), 900000);
 
-    // 页面可见性检测：切回标签页时刷新
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[CryptoPage] Page visible, refreshing AI analysis');
-        fetchAIAnalysis(true);
+        console.log('[CryptoPage] Page visible, checking cache for AI analysis');
+        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
       }
     };
 

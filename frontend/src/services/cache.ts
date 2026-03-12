@@ -49,6 +49,9 @@ export const MODULE_CONFIGS: Record<string, ModuleConfig> = {
   pulseRecommendations: { key: 'pulse_recommendations', ttl: 30 * 60 }, // 30 分鐘
   competitors: { key: 'competitors', ttl: 15 * 60 }, // 15 分鐘
   competitorsHighlight: { key: 'competitors_highlight', ttl: 10 * 60 }, // 10 分鐘 AI 分析
+  bybitAnnouncements: { key: 'bybit_announcements', ttl: 10 * 60 }, // 10 分鐘
+  binanceAnnouncements: { key: 'binance_announcements', ttl: 10 * 60 }, // 10 分鐘
+  bitgetAnnouncements: { key: 'bitget_announcements', ttl: 10 * 60 }, // 10 分鐘
 };
 
 /**

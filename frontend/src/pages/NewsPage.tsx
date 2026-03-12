@@ -116,9 +116,24 @@ export const NewsPage = () => {
 
   // ==================== AI 分析 - 10 分钟定时刷新 + 可见性刷新 ====================
   useEffect(() => {
-    const fetchAIAnalysis = async () => {
+    const fetchAIAnalysis = async (forceRefresh = false) => {
       // 使用 cachedNews 而不是 news
       if (!cachedNews || cachedNews.length === 0) return;
+
+      // 检查前端缓存 (10 分钟)，强制刷新时跳过
+      if (!forceRefresh) {
+        const cached = cacheService.getCache<HighlightSummary>('newsHighlight');
+        const cachedAt = cacheService.getCacheTimestamp('newsHighlight');
+        const now = Date.now();
+        const isExpired = !cachedAt || (now - cachedAt) > 600000; // 10 分钟
+
+        if (cached && !isExpired) {
+          setHighlight(cached);
+          setAnalysisLoading(false);
+          console.log('[NewsPage] Using cached AI analysis');
+          return;
+        }
+      }
 
       setAnalysisLoading(true);
       try {
@@ -173,13 +188,13 @@ export const NewsPage = () => {
     fetchAIAnalysis();
 
     // 定时刷新：每 10 分钟
-    const interval = setInterval(fetchAIAnalysis, 600000);
+    const interval = setInterval(() => fetchAIAnalysis(false), 600000);
 
-    // 页面可见性检测：切回标签页时刷新
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[NewsPage] Page visible, refreshing AI analysis');
-        fetchAIAnalysis();
+        console.log('[NewsPage] Page visible, checking cache for AI analysis');
+        fetchAIAnalysis(false); // 优先走缓存，缓存过期才请求 API
       }
     };
 

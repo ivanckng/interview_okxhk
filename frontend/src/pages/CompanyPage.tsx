@@ -148,6 +148,31 @@ export const CompanyPage = () => {
     }
   }, [language]);
 
+  // 初始化时从缓存读取公告数据
+  useEffect(() => {
+    const cachedBybit = cacheService.getCache<{ announcements: ExchangeAnnouncement[]; last_updated: string }>('bybitAnnouncements');
+    if (cachedBybit) {
+      setBybitAnnouncements(cachedBybit.announcements);
+      setBybitUpdateTime(cachedBybit.last_updated);
+      setLoading(false);
+      console.log('[CompanyPage] Loaded Bybit announcements from cache');
+    }
+
+    const cachedBinance = cacheService.getCache<{ announcements: ExchangeAnnouncement[]; last_updated: string }>('binanceAnnouncements');
+    if (cachedBinance) {
+      setBinanceAnnouncements(cachedBinance.announcements);
+      setBinanceUpdateTime(cachedBinance.last_updated);
+      console.log('[CompanyPage] Loaded Binance announcements from cache');
+    }
+
+    const cachedBitget = cacheService.getCache<{ announcements: ExchangeAnnouncement[]; last_updated: string }>('bitgetAnnouncements');
+    if (cachedBitget) {
+      setBitgetAnnouncements(cachedBitget.announcements);
+      setBitgetUpdateTime(cachedBitget.last_updated);
+      console.log('[CompanyPage] Loaded Bitget announcements from cache');
+    }
+  }, []);
+
   // Fetch AI analysis of competitor data (every 10 minutes)
   useEffect(() => {
     const hasData = bybitAnnouncements.length > 0 || binanceAnnouncements.length > 0 || bitgetAnnouncements.length > 0;
@@ -288,7 +313,20 @@ export const CompanyPage = () => {
       return response;
     };
 
-    const fetchBybitData = async () => {
+    // 检查缓存是否过期（10 分钟）
+    const isCacheExpired = (cacheKey: string) => {
+      const cachedAt = cacheService.getCacheTimestamp(cacheKey);
+      if (!cachedAt) return true;
+      return Date.now() - cachedAt > 600000; // 10 分钟
+    };
+
+    const fetchBybitData = async (forceRefresh = false) => {
+      // 检查缓存，未过期且非强制刷新时直接使用
+      if (!forceRefresh && !isCacheExpired('bybitAnnouncements')) {
+        console.log('[Company] Using cached Bybit announcements');
+        return;
+      }
+
       try {
         let locale = language === 'zh' ? 'zh-CN' : 'en-US';
         let response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bybit/announcements?locale=${locale}&limit=20`);
@@ -305,13 +343,24 @@ export const CompanyPage = () => {
           console.log('[Company] Setting Bybit announcements:', data.announcements.length);
           setBybitAnnouncements(data.announcements);
           setBybitUpdateTime(data.last_updated);
+          // 缓存 10 分钟
+          cacheService.setCache('bybitAnnouncements', {
+            announcements: data.announcements,
+            last_updated: data.last_updated
+          }, 600);
         }
       } catch (err) {
         console.error('Failed to fetch Bybit announcements:', err);
       }
     };
 
-    const fetchBinanceData = async () => {
+    const fetchBinanceData = async (forceRefresh = false) => {
+      // 检查缓存，未过期且非强制刷新时直接使用
+      if (!forceRefresh && !isCacheExpired('binanceAnnouncements')) {
+        console.log('[Company] Using cached Binance announcements');
+        return;
+      }
+
       try {
         const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/binance/announcements?limit=20`);
         const data = await response.json();
@@ -321,13 +370,24 @@ export const CompanyPage = () => {
           console.log('[Company] Setting Binance announcements:', data.announcements.length);
           setBinanceAnnouncements(data.announcements);
           setBinanceUpdateTime(data.last_updated);
+          // 缓存 10 分钟
+          cacheService.setCache('binanceAnnouncements', {
+            announcements: data.announcements,
+            last_updated: data.last_updated
+          }, 600);
         }
       } catch (err) {
         console.error('Failed to fetch Binance announcements:', err);
       }
     };
 
-    const fetchBitgetData = async () => {
+    const fetchBitgetData = async (forceRefresh = false) => {
+      // 检查缓存，未过期且非强制刷新时直接使用
+      if (!forceRefresh && !isCacheExpired('bitgetAnnouncements')) {
+        console.log('[Company] Using cached Bitget announcements');
+        return;
+      }
+
       try {
         let lang = language === 'zh' ? 'zh_CN' : 'en_US';
         const response = await fetchWithTimeout(`http://localhost:8000/api/exchanges/bitget/announcements?language=${lang}&limit=10`);
@@ -338,6 +398,11 @@ export const CompanyPage = () => {
           console.log('[Company] Setting Bitget announcements:', data.announcements.length);
           setBitgetAnnouncements(data.announcements);
           setBitgetUpdateTime(data.last_updated);
+          // 缓存 10 分钟
+          cacheService.setCache('bitgetAnnouncements', {
+            announcements: data.announcements,
+            last_updated: data.last_updated
+          }, 600);
         }
       } catch (err) {
         console.error('Failed to fetch Bitget announcements:', err);
@@ -345,22 +410,45 @@ export const CompanyPage = () => {
     };
 
     // Fetch all data independently (don't block UI on single failure)
-    const loadAll = () => {
+    const loadAll = (forceRefresh = false) => {
       setLoading(true);
       Promise.all([
-        fetchBybitData(),
-        fetchBinanceData(),
-        fetchBitgetData()
+        fetchBybitData(forceRefresh),
+        fetchBinanceData(forceRefresh),
+        fetchBitgetData(forceRefresh)
       ]).finally(() => {
         setLoading(false);
       });
     };
 
-    loadAll();
+    // 首次加载：有缓存则不显示 loading
+    const cachedBybit = cacheService.getCache('bybitAnnouncements');
+    const cachedBinance = cacheService.getCache('binanceAnnouncements');
+    const cachedBitget = cacheService.getCache('bitgetAnnouncements');
+    if (!cachedBybit || !cachedBinance || !cachedBitget) {
+      loadAll(false);
+    } else {
+      // 背景检查更新
+      loadAll(false);
+    }
 
-    // Refresh every 10 minutes
-    const interval = setInterval(loadAll, 600000);
-    return () => clearInterval(interval);
+    // 定时刷新：每 10 分钟
+    const interval = setInterval(() => loadAll(false), 600000);
+
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[CompanyPage] Page visible, checking cache for announcements');
+        loadAll(false); // 优先走缓存，缓存过期才请求 API
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [language]);
 
   // Get all announcements sorted by priority

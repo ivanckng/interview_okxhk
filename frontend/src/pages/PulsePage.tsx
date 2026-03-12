@@ -22,34 +22,7 @@ export const PulsePage = () => {
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(true);
 
-  // 初始化时从缓存读取数据
-  useEffect(() => {
-    const cachedSummary = cacheService.getCache<PulseSummary>('pulse');
-    const cachedRecs = cacheService.getCache<{ recommendations: PulseRecommendation[] }>('pulseRecommendations');
-    const cachedComprehensive = cacheService.getCache<any>('pulseComprehensive');
-    
-    if (cachedComprehensive?.comprehensive_analysis) {
-      // 优先使用综合分析缓存
-      const analysis = cachedComprehensive.comprehensive_analysis;
-      setPulseSummary({
-        market_pulse: analysis.market_pulse,
-        key_insights: analysis.key_insights,
-        hot_sectors: analysis.hot_sectors,
-        overall_sentiment: analysis.overall_sentiment,
-        trend_prediction: analysis.trend_prediction,
-        action_items: analysis.action_items,
-        risk_alerts: analysis.risk_alerts,
-      });
-      setLoading(false);
-      setAnalysisLoading(false);
-      console.log('[PulsePage] Using cached comprehensive analysis');
-    } else {
-      if (cachedSummary) setPulseSummary(cachedSummary);
-      if (cachedRecs) setRecommendations(cachedRecs.recommendations || []);
-    }
-  }, []);
-
-  // ==================== Pulse 综合数据 - 20 分钟定时 + 可见性刷新 ====================
+  // ==================== Pulse 综合数据获取 ====================
   const fetchPulseData = async (forceRefresh = false) => {
     // 检查缓存是否过期 (20 分钟)，强制刷新时跳过
     if (!forceRefresh) {
@@ -69,6 +42,12 @@ export const PulsePage = () => {
           action_items: analysis.action_items,
           risk_alerts: analysis.risk_alerts,
         });
+        // 同时设置推荐数据（如果缓存存在）
+        const cachedRecs = cacheService.getCache<{ recommendations: PulseRecommendation[] }>('pulseRecommendations');
+        console.log('[PulsePage] Cache hit - Recommendations:', cachedRecs?.recommendations?.length || 0, 'items');
+        if (cachedRecs) {
+          setRecommendations(cachedRecs.recommendations || []);
+        }
         setAnalysisLoading(false);
         setLoading(false);
         console.log('[PulsePage] Using cached comprehensive analysis');
@@ -122,10 +101,12 @@ export const PulsePage = () => {
 
         // Fetch recommendations separately
         const recData = await api.getPulseRecommendations();
+        console.log('[Pulse AI] Recommendations from API:', recData);
         let translatedRecs = recData.recommendations;
         if (language === 'zh') {
           translatedRecs = await translatePulseRecommendations(recData.recommendations, 'zh');
         }
+        console.log('[Pulse AI] Setting recommendations:', translatedRecs?.length || 0, 'items');
         setRecommendations(translatedRecs);
         cacheService.setCache('pulseRecommendations', { recommendations: translatedRecs }, 1800); // 30 分钟
 
@@ -165,6 +146,7 @@ export const PulsePage = () => {
       console.error('Failed to fetch pulse data:', err);
       // 使用缓存作为 fallback
       const cached = cacheService.getCache<any>('pulseComprehensive');
+      const cachedRecs = cacheService.getCache<{ recommendations: PulseRecommendation[] }>('pulseRecommendations');
       if (cached?.comprehensive_analysis) {
         const analysis = cached.comprehensive_analysis;
         setPulseSummary({
@@ -176,6 +158,10 @@ export const PulsePage = () => {
           action_items: analysis.action_items,
           risk_alerts: analysis.risk_alerts,
         });
+      }
+      // 同时恢复推荐数据
+      if (cachedRecs) {
+        setRecommendations(cachedRecs.recommendations || []);
       }
     } finally {
       setLoading(false);
@@ -196,11 +182,11 @@ export const PulsePage = () => {
     // 定时刷新：每 20 分钟
     const interval = setInterval(() => fetchPulseData(false), 1200000);
 
-    // 页面可见性检测：切回标签页时刷新
+    // 页面可见性检测：切回标签页时检查缓存，过期才刷新
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[PulsePage] Page visible, refreshing comprehensive analysis');
-        fetchPulseData(true);
+        console.log('[PulsePage] Page visible, checking cache for comprehensive analysis');
+        fetchPulseData(false); // 优先走缓存，缓存过期才请求 API
       }
     };
 
@@ -210,6 +196,44 @@ export const PulsePage = () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
+  }, []);
+
+  // 初始化时从缓存读取数据（仅用于秒开体验），然后检查是否需要刷新
+  useEffect(() => {
+    const cachedSummary = cacheService.getCache<PulseSummary>('pulse');
+    const cachedRecs = cacheService.getCache<{ recommendations: PulseRecommendation[] }>('pulseRecommendations');
+    const cachedComprehensive = cacheService.getCache<any>('pulseComprehensive');
+    
+    console.log('[PulsePage] Cache check - Recommendations:', cachedRecs?.recommendations?.length || 0, 'items');
+    console.log('[PulsePage] Cache check - Comprehensive:', !!cachedComprehensive?.comprehensive_analysis);
+    
+    // 先显示缓存数据（秒开体验）
+    if (cachedComprehensive?.comprehensive_analysis) {
+      const analysis = cachedComprehensive.comprehensive_analysis;
+      setPulseSummary({
+        market_pulse: analysis.market_pulse,
+        key_insights: analysis.key_insights,
+        hot_sectors: analysis.hot_sectors,
+        overall_sentiment: analysis.overall_sentiment,
+        trend_prediction: analysis.trend_prediction,
+        action_items: analysis.action_items,
+        risk_alerts: analysis.risk_alerts,
+      });
+      if (cachedRecs) {
+        setRecommendations(cachedRecs.recommendations || []);
+      }
+      // 有缓存时先不显示 loading，背景检查是否需要更新
+      setLoading(false);
+      setAnalysisLoading(false);
+      console.log('[PulsePage] Loaded cached data for instant display');
+    } else {
+      // 无缓存，显示 loading
+      if (cachedSummary) setPulseSummary(cachedSummary);
+      if (cachedRecs) setRecommendations(cachedRecs.recommendations || []);
+    }
+    
+    // 始终触发 fetchPulseData 来检查缓存是否过期并获取最新数据
+    fetchPulseData();
   }, []);
 
   // 语言变化时重新获取数据
