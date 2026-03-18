@@ -28,7 +28,7 @@ const impactConfig = {
     critical: { color: 'text-red-400', bg: 'bg-red-500/10', label: '极高' },
     high: { color: 'text-orange-400', bg: 'bg-orange-500/10', label: '高' },
     medium: { color: 'text-yellow-400', bg: 'bg-yellow-500/10', label: '中' },
-    low: { color: 'text-gray-400', bg: 'bg-gray-500/10', label: '低' },
+    low: { color: 'text-slate-200', bg: 'bg-slate-400/20', label: '低' },
   },
 };
 
@@ -36,6 +36,8 @@ const impactConfig = {
 const staticTranslations = {
   en: {
     noAnnouncements: 'Fetching related announcements.',
+    noResults: 'No announcements match the current filters.',
+    emptyAnnouncements: 'No announcements available right now.',
     bybitSource: 'Bybit: Official Announcement API',
     binanceSource: 'Binance: Official Announcement API',
     bitgetSource: 'Bitget: Official Announcement API',
@@ -57,6 +59,8 @@ const staticTranslations = {
   },
   zh: {
     noAnnouncements: '正在获取相关公告。',
+    noResults: '当前筛选条件下没有公告。',
+    emptyAnnouncements: '暂无相关公告。',
     bybitSource: 'Bybit: 官方公告接口',
     binanceSource: 'Binance: 官方公告接口',
     bitgetSource: 'Bitget: 官方公告接口',
@@ -104,7 +108,7 @@ export const CompanyPage = () => {
   const [binanceUpdateTime, setBinanceUpdateTime] = useState<string>('');
   const [bitgetAnnouncements, setBitgetAnnouncements] = useState<ExchangeAnnouncement[]>([]);
   const [bitgetUpdateTime, setBitgetUpdateTime] = useState<string>('');
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [analyzingAI, setAnalyzingAI] = useState(true);
   const [highlight, setHighlight] = useState<{
     title: string;
@@ -125,6 +129,26 @@ export const CompanyPage = () => {
     bybitAnnouncements.length > 0 ||
     binanceAnnouncements.length > 0 ||
     bitgetAnnouncements.length > 0;
+
+  const deriveImpactLevel = (announcement: ExchangeAnnouncement): 'critical' | 'high' | 'medium' | 'low' => {
+    if (announcement.impact_level) {
+      return announcement.impact_level;
+    }
+
+    if (announcement.importance === 'high') {
+      return 'high';
+    }
+
+    if (announcement.importance === 'medium') {
+      return 'medium';
+    }
+
+    const score = announcement.priority_score || 0;
+    if (score >= 90) return 'critical';
+    if (score >= 75) return 'high';
+    if (score >= 50) return 'medium';
+    return 'low';
+  };
 
   // Fallback highlight data (only shown when AI analysis fails)
   const fallbackHighlight = {
@@ -458,7 +482,7 @@ export const CompanyPage = () => {
       url: a.url,
       publishTime: a.publish_time,
       importance: a.importance || 'medium',
-      impact_level: a.impact_level,
+      impact_level: deriveImpactLevel(a),
       title_zh: a.title_zh,
       summary_zh: a.summary_zh,
       isReal: true,
@@ -476,7 +500,7 @@ export const CompanyPage = () => {
       url: a.url,
       publishTime: a.publish_time,
       importance: a.importance || 'medium',
-      impact_level: a.impact_level,
+      impact_level: deriveImpactLevel(a),
       title_zh: a.title_zh,
       summary_zh: a.summary_zh,
       isReal: true,
@@ -494,7 +518,7 @@ export const CompanyPage = () => {
       url: a.url,
       publishTime: a.publish_time,
       importance: a.importance || 'medium',
-      impact_level: a.impact_level,
+      impact_level: deriveImpactLevel(a),
       title_zh: a.title_zh,
       summary_zh: a.summary_zh,
       isReal: true,
@@ -532,6 +556,11 @@ export const CompanyPage = () => {
 
   // All announcement types for the type filter
   const allTypes: AnnouncementType[] = ['new_listing', 'delisting', 'activity', 'product_update', 'maintenance', 'rule_change', 'market'];
+  const emptyStateMessage = loading && !hasAnyAnnouncements
+    ? t.noAnnouncements
+    : hasAnyAnnouncements
+      ? t.noResults
+      : t.emptyAnnouncements;
 
   return (
     <div>
@@ -751,7 +780,7 @@ export const CompanyPage = () => {
 
         {allAnnouncements.length === 0 && (
           <div className="text-center py-12 text-okx-text-secondary">
-            {t.noAnnouncements}
+            {emptyStateMessage}
           </div>
         )}
       </div>
