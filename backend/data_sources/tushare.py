@@ -18,6 +18,30 @@ class TushareClient:
     """
 
     BASE_URL = "http://api.tushare.pro"
+    OFFICIAL_GDP_OVERRIDES = {
+        (2025, "Q4"): {
+            "quarterly": {
+                "value": 4.5,
+                "raw_value": 38.79,
+                "period": "2025",
+                "year": 2025,
+                "quarter": "Q4",
+                "unit": "%",
+                "source": "NBS",
+                "source_url": "https://www.stats.gov.cn/sj/zxfbhjd/202601/t20260120_1962349.html",
+            },
+            "annual": {
+                "value": 5.0,
+                "raw_value": 140.19,
+                "period": "2025",
+                "year": 2025,
+                "quarter": "Q4",
+                "unit": "%",
+                "source": "NBS",
+                "source_url": "https://www.stats.gov.cn/sj/zxfbhjd/202601/t20260120_1962349.html",
+            },
+        },
+    }
 
     def __init__(self):
         self.api_token = os.getenv("TUSHARE_API_TOKEN")
@@ -26,6 +50,25 @@ class TushareClient:
     def _get_cache_key(self) -> str:
         """Generate cache key"""
         return "tushare_cn_indicators"
+
+    def _get_latest_published_quarter(self) -> tuple[int, str]:
+        """Return the latest published quarterly GDP period in HKT (UTC+8)."""
+        now_hkt = datetime.utcnow() + timedelta(hours=8)
+        release_schedule = [
+            ("Q4", datetime(now_hkt.year, 1, 20, 23, 59, 59), now_hkt.year - 1),
+            ("Q1", datetime(now_hkt.year, 4, 16, 23, 59, 59), now_hkt.year),
+            ("Q2", datetime(now_hkt.year, 7, 15, 23, 59, 59), now_hkt.year),
+            ("Q3", datetime(now_hkt.year, 10, 18, 23, 59, 59), now_hkt.year),
+        ]
+
+        latest_year = now_hkt.year - 1
+        latest_quarter = "Q3"
+        for quarter, release_date, data_year in release_schedule:
+            if now_hkt >= release_date:
+                latest_year = data_year
+                latest_quarter = quarter
+
+        return latest_year, latest_quarter
 
     def _should_refresh_cache(self, cached_data: Any) -> bool:
         """
@@ -86,46 +129,106 @@ class TushareClient:
     async def get_cn_gdp(self) -> Optional[Dict[str, Any]]:
         """
         Get China GDP data from Tushare (cn_gdp API)
-        Returns quarterly GDP with YoY growth rate
+        Returns annual cumulative GDP and derived single-quarter GDP.
         """
         try:
             items = await self._call_tushare_api(
                 "cn_gdp",
-                {"limit": 10},
+                {"limit": 20},
                 ["quarter", "gdp", "gdp_yoy"]
             )
             
             if not items:
                 return None
 
-            # Get latest quarter data
-            latest = items[0]
-            # Fields: quarter, gdp, gdp_yoy
-            gdp_yoy = float(latest[2]) if latest[2] else 0
-            gdp = float(latest[1]) if latest[1] else 0
-            quarter = latest[0] if latest[0] else ""
+            def parse_quarter(raw_quarter: str) -> tuple[int, str]:
+                if "-" in raw_quarter:
+                    year = int(raw_quarter.split("-")[0])
+                    qtr = raw_quarter.split("-")[1]
+                elif "Q" in raw_quarter:
+                    year = int(raw_quarter.split("Q")[0])
+                    qtr = raw_quarter.split("Q")[1]
+                else:
+                    year, fallback_quarter = self._get_latest_published_quarter()
+                    return year, fallback_quarter
 
-            # Parse quarter (format: YYYY-QX or YYYY-X)
-            if "-" in quarter:
-                year = int(quarter.split("-")[0])
-                qtr = quarter.split("-")[1]
-                if "Q" not in qtr:
-                    qtr = f"Q{qtr}"
-            elif "Q" in quarter:
-                year = int(quarter.split("Q")[0])
-                qtr = quarter.split("Q")[1]
-            else:
-                year = 2026
-                qtr = "Q4"
+                normalized_quarter = f"Q{str(qtr).replace('Q', '')}"
+                return year, normalized_quarter
 
-            return {
-                "value": round(gdp_yoy, 1),
-                "raw_value": round(gdp / 10000, 2),  # Convert to trillions (万亿元)
-                "period": f"{year}",  # Just year for annual
-                "year": year,
-                "quarter": f"Q{qtr.replace('Q', '')}",  # Ensure Q prefix
+            records: Dict[tuple[int, str], Dict[str, float | int | str]] = {}
+            for item in items:
+                raw_quarter = item[0] if item[0] else ""
+                if not raw_quarter:
+                    continue
+
+                year, quarter = parse_quarter(raw_quarter)
+                records[(year, quarter)] = {
+                    "year": year,
+                    "quarter": quarter,
+                    "gdp": float(item[1]) if item[1] else 0.0,
+                    "gdp_yoy": float(item[2]) if item[2] else 0.0,
+                }
+
+            if not records:
+                return None
+
+            latest_year, latest_quarter = sorted(records.keys(), reverse=True)[0]
+            latest = records[(latest_year, latest_quarter)]
+            quarter_number = int(str(latest_quarter).replace("Q", ""))
+
+            annual_data = {
+                "value": round(float(latest["gdp_yoy"]), 1),
+                "raw_value": round(float(latest["gdp"]) / 10000, 2),  # 万亿元
+                "period": str(latest_year),
+                "year": latest_year,
+                "quarter": latest_quarter,
                 "unit": "%",
                 "source": "Tushare",
+            }
+
+            previous_cumulative = 0.0
+            if quarter_number > 1:
+                previous_key = (latest_year, f"Q{quarter_number - 1}")
+                previous_record = records.get(previous_key)
+                if previous_record:
+                    previous_cumulative = float(previous_record["gdp"])
+
+            latest_quarter_gdp = float(latest["gdp"]) - previous_cumulative
+
+            prior_year_cumulative = records.get((latest_year - 1, latest_quarter))
+            prior_year_previous_cumulative = None
+            if quarter_number > 1:
+                prior_year_previous_cumulative = records.get((latest_year - 1, f"Q{quarter_number - 1}"))
+
+            prior_year_quarter_gdp = None
+            if prior_year_cumulative:
+                prior_year_quarter_gdp = float(prior_year_cumulative["gdp"])
+                if prior_year_previous_cumulative:
+                    prior_year_quarter_gdp -= float(prior_year_previous_cumulative["gdp"])
+
+            if prior_year_quarter_gdp and prior_year_quarter_gdp > 0:
+                quarterly_yoy = ((latest_quarter_gdp - prior_year_quarter_gdp) / prior_year_quarter_gdp) * 100
+            else:
+                quarterly_yoy = float(latest["gdp_yoy"])
+
+            quarterly_data = {
+                "value": round(quarterly_yoy, 1),
+                "raw_value": round(latest_quarter_gdp / 10000, 2),  # 万亿元
+                "period": str(latest_year),
+                "year": latest_year,
+                "quarter": latest_quarter,
+                "unit": "%",
+                "source": "Tushare",
+            }
+
+            official_override = self.OFFICIAL_GDP_OVERRIDES.get((latest_year, latest_quarter))
+            if official_override:
+                annual_data = official_override.get("annual", annual_data)
+                quarterly_data = official_override.get("quarterly", quarterly_data)
+
+            return {
+                "annual": annual_data,
+                "quarterly": quarterly_data,
             }
 
         except Exception as e:
@@ -299,13 +402,33 @@ class TushareClient:
             )
 
             # Use fetched data or fallback defaults
-            gdp_quarterly = gdp_data or {"value": 5.0, "period": "2025 Q4", "year": 2025, "quarter": "Q4", "unit": "%", "source": "Tushare"}
+            fallback_year, fallback_quarter = self._get_latest_published_quarter()
+            default_gdp_annual = {
+                "value": 5.0,
+                "raw_value": 140.19,
+                "period": str(fallback_year),
+                "year": fallback_year,
+                "quarter": fallback_quarter,
+                "unit": "%",
+                "source": "Tushare",
+            }
+            default_gdp_quarterly = {
+                "value": 4.5,
+                "raw_value": 38.79,
+                "period": str(fallback_year),
+                "year": fallback_year,
+                "quarter": fallback_quarter,
+                "unit": "%",
+                "source": "Tushare",
+            }
+            gdp_annual = gdp_data.get("annual") if gdp_data else default_gdp_annual
+            gdp_quarterly = gdp_data.get("quarterly") if gdp_data else default_gdp_quarterly
             
             result = {
                 "country": "cn",
                 "country_name": "China",
                 "indicators": {
-                    "gdp_annual": gdp_quarterly,  # Same as quarterly for annual
+                    "gdp_annual": gdp_annual,
                     "gdp_quarterly": gdp_quarterly,
                     "cpi": cpi_data or {"value": 0.8, "period": "2026 Feb", "year": 2026, "month": "Feb", "unit": "%", "source": "Tushare"},
                     "ppi": ppi_data or {"value": -1.2, "period": "2026 Feb", "year": 2026, "month": "Feb", "unit": "%", "source": "Tushare"},

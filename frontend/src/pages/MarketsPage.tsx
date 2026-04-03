@@ -61,24 +61,6 @@ const staticTranslations = {
   },
 };
 
-// 经济指标 Mock 数据
-const economyIndicatorsMock = {
-  us: {
-    gdp_annual: { value: 2.8, year: 2025, unit: '%' },
-    gdp_quarterly: { value: 3.1, year: 2026, quarter: 'Q4', unit: '%' },
-    cpi: { value: 3.2, year: 2026, month: 'Feb', unit: '%' },
-    ppi: { value: 2.1, year: 2026, month: 'Feb', unit: '%' },
-    unemployment: { value: 3.7, year: 2026, month: 'Feb', unit: '%' },
-  },
-  cn: {
-    gdp_annual: { value: 5.2, year: 2025, unit: '%' },
-    gdp_quarterly: { value: 5.4, year: 2026, quarter: 'Q4', unit: '%' },
-    cpi: { value: 0.8, year: 2026, month: 'Feb', unit: '%' },
-    ppi: { value: -1.2, year: 2026, month: 'Feb', unit: '%' },
-    unemployment: { value: 5.1, year: 2026, month: 'Feb', unit: '%' },
-  },
-};
-
 const formatIndicatorPeriod = (period: string, lang: 'en' | 'zh') => {
   if (!period) {
     return lang === 'zh' ? '统计期：待更新' : 'Period: pending';
@@ -193,25 +175,23 @@ const IndicatorCard = ({
   quarter,
   month,
   unit,
-  rawValue,
   isUnemployment = false,
-  isChinaGDP = false,
   isGDP = false,
   lang = 'en'
 }: { 
   label: string; 
-  value: number; 
-  period: string;
+  value?: number | null;
+  period?: string;
   year?: number | string;
   quarter?: string;
   month?: string;
-  unit: string;
-  rawValue?: number | null;
+  unit?: string;
   isUnemployment?: boolean;
-  isChinaGDP?: boolean;
   isGDP?: boolean;
   lang?: 'en' | 'zh';
 }) => {
+  const isLoading = typeof value !== 'number' || Number.isNaN(value);
+
   // Format value - no "+" for unemployment
   const formatValue = (val: number) => {
     if (isUnemployment) {
@@ -222,22 +202,17 @@ const IndicatorCard = ({
 
   // GDP labels based on language (capitalized)
   const realLabel = lang === 'zh' ? '实际' : 'Real';
-  const nominalLabel = lang === 'zh' ? '名义' : 'Nominal';
-
   return (
     <div className="bg-okx-bg-secondary border border-okx-border rounded-lg p-3">
       <div className="text-okx-text-muted text-[10px] mb-1">{label}</div>
       <div className="text-lg font-bold text-white font-mono mb-1">
-        {formatValue(value)}
-        {isGDP && <span className="text-[10px] text-okx-text-muted ml-1">({realLabel})</span>}
+        {isLoading ? (lang === 'zh' ? '获取中...' : 'Fetching...') : formatValue(value)}
+        {!isLoading && isGDP && <span className="text-[10px] text-okx-text-muted ml-1">({realLabel})</span>}
       </div>
-      {rawValue && (
-        <div className="text-okx-text-muted text-[10px] mb-1">
-          GDP: {isChinaGDP ? '¥' : '$'}{rawValue.toLocaleString()}T <span className="text-[9px]">({nominalLabel})</span>
-        </div>
-      )}
       <div className="text-okx-text-muted text-[10px]">
-        {formatIndicatorPeriodFromFields({ period, year, quarter, month, lang })}
+        {isLoading
+          ? (lang === 'zh' ? '统计期：获取中...' : 'Period: fetching...')
+          : formatIndicatorPeriodFromFields({ period, year, quarter, month, lang })}
       </div>
     </div>
   );
@@ -531,11 +506,7 @@ export const MarketsPage = () => {
         setEconomyData({ us: usData, cn: cnData });
       } catch (err) {
         console.error('Failed to fetch economy data:', err);
-        // Fallback to mock data
-        setEconomyData({ 
-          us: { indicators: economyIndicatorsMock.us }, 
-          cn: { indicators: economyIndicatorsMock.cn } 
-        });
+        setEconomyData({ us: null, cn: null });
       } finally {
         setEconomyLoading(false);
       }
@@ -692,9 +663,7 @@ export const MarketsPage = () => {
 
   // Helper to format indicator data
   const getIndicatorData = (country: 'us' | 'cn', key: 'gdp_annual' | 'gdp_quarterly' | 'cpi' | 'ppi' | 'unemployment') => {
-    const data = economyData[country]?.indicators?.[key];
-    if (!data) return economyIndicatorsMock[country][key];
-    return data;
+    return economyData[country]?.indicators?.[key];
   };
 
   return (
@@ -754,50 +723,48 @@ export const MarketsPage = () => {
           <div className="grid grid-cols-5 gap-3">
             <IndicatorCard
               label={indicators.gdpAnnual}
-              value={getIndicatorData('us', 'gdp_annual').value}
-              period={getIndicatorData('us', 'gdp_annual').period}
-              year={getIndicatorData('us', 'gdp_annual').year}
-              unit={getIndicatorData('us', 'gdp_annual').unit}
-              rawValue={getIndicatorData('us', 'gdp_annual').raw_value}
+              value={getIndicatorData('us', 'gdp_annual')?.value}
+              period={getIndicatorData('us', 'gdp_annual')?.period}
+              year={getIndicatorData('us', 'gdp_annual')?.year}
+              unit={getIndicatorData('us', 'gdp_annual')?.unit}
               isGDP={true}
               lang={language}
             />
             <IndicatorCard
               label={indicators.gdpQuarterly}
-              value={getIndicatorData('us', 'gdp_quarterly').value}
-              period={getIndicatorData('us', 'gdp_quarterly').period}
-              year={getIndicatorData('us', 'gdp_quarterly').year}
-              quarter={getIndicatorData('us', 'gdp_quarterly').quarter}
-              unit={getIndicatorData('us', 'gdp_quarterly').unit}
-              rawValue={getIndicatorData('us', 'gdp_quarterly').raw_value}
+              value={getIndicatorData('us', 'gdp_quarterly')?.value}
+              period={getIndicatorData('us', 'gdp_quarterly')?.period}
+              year={getIndicatorData('us', 'gdp_quarterly')?.year}
+              quarter={getIndicatorData('us', 'gdp_quarterly')?.quarter}
+              unit={getIndicatorData('us', 'gdp_quarterly')?.unit}
               isGDP={true}
               lang={language}
             />
             <IndicatorCard
               label={indicators.cpi}
-              value={getIndicatorData('us', 'cpi').value}
-              period={getIndicatorData('us', 'cpi').period}
-              year={getIndicatorData('us', 'cpi').year}
-              month={getIndicatorData('us', 'cpi').month}
-              unit={getIndicatorData('us', 'cpi').unit}
+              value={getIndicatorData('us', 'cpi')?.value}
+              period={getIndicatorData('us', 'cpi')?.period}
+              year={getIndicatorData('us', 'cpi')?.year}
+              month={getIndicatorData('us', 'cpi')?.month}
+              unit={getIndicatorData('us', 'cpi')?.unit}
               lang={language}
             />
             <IndicatorCard
               label={indicators.ppi}
-              value={getIndicatorData('us', 'ppi').value}
-              period={getIndicatorData('us', 'ppi').period}
-              year={getIndicatorData('us', 'ppi').year}
-              month={getIndicatorData('us', 'ppi').month}
-              unit={getIndicatorData('us', 'ppi').unit}
+              value={getIndicatorData('us', 'ppi')?.value}
+              period={getIndicatorData('us', 'ppi')?.period}
+              year={getIndicatorData('us', 'ppi')?.year}
+              month={getIndicatorData('us', 'ppi')?.month}
+              unit={getIndicatorData('us', 'ppi')?.unit}
               lang={language}
             />
             <IndicatorCard
               label={indicators.unemployment}
-              value={getIndicatorData('us', 'unemployment').value}
-              period={getIndicatorData('us', 'unemployment').period}
-              year={getIndicatorData('us', 'unemployment').year}
-              month={getIndicatorData('us', 'unemployment').month}
-              unit={getIndicatorData('us', 'unemployment').unit}
+              value={getIndicatorData('us', 'unemployment')?.value}
+              period={getIndicatorData('us', 'unemployment')?.period}
+              year={getIndicatorData('us', 'unemployment')?.year}
+              month={getIndicatorData('us', 'unemployment')?.month}
+              unit={getIndicatorData('us', 'unemployment')?.unit}
               isUnemployment={true}
               lang={language}
             />
@@ -816,53 +783,49 @@ export const MarketsPage = () => {
           <div className="grid grid-cols-5 gap-3">
             <IndicatorCard
               label={indicators.gdpAnnual}
-              value={getIndicatorData('cn', 'gdp_annual').value}
-              period={getIndicatorData('cn', 'gdp_annual').period}
-              year={getIndicatorData('cn', 'gdp_annual').year}
-              quarter={getIndicatorData('cn', 'gdp_annual').quarter}
-              unit={getIndicatorData('cn', 'gdp_annual').unit}
-              rawValue={getIndicatorData('cn', 'gdp_annual').raw_value}
+              value={getIndicatorData('cn', 'gdp_annual')?.value}
+              period={getIndicatorData('cn', 'gdp_annual')?.period}
+              year={getIndicatorData('cn', 'gdp_annual')?.year}
+              quarter={getIndicatorData('cn', 'gdp_annual')?.quarter}
+              unit={getIndicatorData('cn', 'gdp_annual')?.unit}
               isGDP={true}
-              isChinaGDP={true}
               lang={language}
             />
             <IndicatorCard
               label={indicators.gdpQuarterly}
-              value={getIndicatorData('cn', 'gdp_quarterly').value}
-              period={getIndicatorData('cn', 'gdp_quarterly').period}
-              year={getIndicatorData('cn', 'gdp_quarterly').year}
-              quarter={getIndicatorData('cn', 'gdp_quarterly').quarter}
-              unit={getIndicatorData('cn', 'gdp_quarterly').unit}
-              rawValue={getIndicatorData('cn', 'gdp_quarterly').raw_value}
+              value={getIndicatorData('cn', 'gdp_quarterly')?.value}
+              period={getIndicatorData('cn', 'gdp_quarterly')?.period}
+              year={getIndicatorData('cn', 'gdp_quarterly')?.year}
+              quarter={getIndicatorData('cn', 'gdp_quarterly')?.quarter}
+              unit={getIndicatorData('cn', 'gdp_quarterly')?.unit}
               isGDP={true}
-              isChinaGDP={true}
               lang={language}
             />
             <IndicatorCard
               label={indicators.cpi}
-              value={getIndicatorData('cn', 'cpi').value}
-              period={getIndicatorData('cn', 'cpi').period}
-              year={getIndicatorData('cn', 'cpi').year}
-              month={getIndicatorData('cn', 'cpi').month}
-              unit={getIndicatorData('cn', 'cpi').unit}
+              value={getIndicatorData('cn', 'cpi')?.value}
+              period={getIndicatorData('cn', 'cpi')?.period}
+              year={getIndicatorData('cn', 'cpi')?.year}
+              month={getIndicatorData('cn', 'cpi')?.month}
+              unit={getIndicatorData('cn', 'cpi')?.unit}
               lang={language}
             />
             <IndicatorCard
               label={indicators.ppi}
-              value={getIndicatorData('cn', 'ppi').value}
-              period={getIndicatorData('cn', 'ppi').period}
-              year={getIndicatorData('cn', 'ppi').year}
-              month={getIndicatorData('cn', 'ppi').month}
-              unit={getIndicatorData('cn', 'ppi').unit}
+              value={getIndicatorData('cn', 'ppi')?.value}
+              period={getIndicatorData('cn', 'ppi')?.period}
+              year={getIndicatorData('cn', 'ppi')?.year}
+              month={getIndicatorData('cn', 'ppi')?.month}
+              unit={getIndicatorData('cn', 'ppi')?.unit}
               lang={language}
             />
             <IndicatorCard
               label={indicators.unemployment}
-              value={getIndicatorData('cn', 'unemployment').value}
-              period={getIndicatorData('cn', 'unemployment').period}
-              year={getIndicatorData('cn', 'unemployment').year}
-              month={getIndicatorData('cn', 'unemployment').month}
-              unit={getIndicatorData('cn', 'unemployment').unit}
+              value={getIndicatorData('cn', 'unemployment')?.value}
+              period={getIndicatorData('cn', 'unemployment')?.period}
+              year={getIndicatorData('cn', 'unemployment')?.year}
+              month={getIndicatorData('cn', 'unemployment')?.month}
+              unit={getIndicatorData('cn', 'unemployment')?.unit}
               isUnemployment={true}
               lang={language}
             />
